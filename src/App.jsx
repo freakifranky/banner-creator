@@ -338,15 +338,11 @@ function BannerCanvas(props) {
 }
 
 // ── Icons ─────────────────────────────────────────────────────
-const IconText = ({ color = "#71717a" }) => (
-  <span style={{ fontSize:15, fontWeight:800, color, fontFamily:"serif", lineHeight:1, userSelect:"none" }}>T</span>
+const IconText = () => (
+  <span style={{ fontSize:15, fontWeight:800, color:"currentColor", fontFamily:"serif", lineHeight:1, userSelect:"none" }}>T</span>
 );
 const IconImage = ({ color = "#71717a" }) => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{display:"block"}}>
-    <rect x="3" y="3" width="18" height="18" rx="2" style={{stroke:color, fill:"none"}}/>
-    <circle cx="8.5" cy="8.5" r="1.5" style={{stroke:color, fill:"none"}}/>
-    <polyline points="21 15 16 10 5 21" style={{stroke:color, fill:"none"}}/>
-  </svg>
+  <span style={{ fontSize:16, color, lineHeight:1, userSelect:"none" }}>🖼</span>
 );
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -525,8 +521,9 @@ export default function SmallBannerEditor() {
                   background:tab===id ? bgColor : "transparent",
                   display:"flex",alignItems:"center",justifyContent:"center",
                   cursor:"pointer",transition:"all 0.15s",
+                  color:tab===id ? "#ffffff" : "#71717a",
                 }}>
-                <Icon color={tab===id ? "#ffffff" : "#71717a"} />
+                <Icon />
               </button>
             ))}
           </div>

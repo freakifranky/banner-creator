@@ -46,15 +46,19 @@ function luminance(hex) {
 // ── PNG Export via Canvas API ─────────────────────────────────
 async function exportBannerAsPng({
   title, subtitle, subtitleMode, discountValue, discountLang,
-  showSubtitle, imagePos, bgColor, images, bannerStyle,
+  showSubtitle, imagePos, bgColor, bgImage, bgMode, images, bannerStyle,
   boldFont, extraboldFont,
 }) {
   const BW = 361, BH = 90, BR = 16, DPR = 3;
   const W = BW * DPR, H = BH * DPR;
 
+  // For floating style, expand canvas upward so product images aren't clipped
+  const isFloating = bannerStyle === "floating";
+  const OVERFLOW = isFloating ? Math.round(H * 0.55) : 0;
+
   const canvas = document.createElement("canvas");
   canvas.width  = W;
-  canvas.height = H;
+  canvas.height = H + OVERFLOW;
   const ctx = canvas.getContext("2d");
 
   // Register fonts
@@ -68,45 +72,67 @@ async function exportBannerAsPng({
   const isLeft  = imagePos === "left";
   const isMid   = imagePos === "middle";
 
-  // Clip to pill (blocked style) or full canvas (floating)
-  ctx.save();
+  // Build pill clip path
   const rr = BR * DPR;
-  ctx.beginPath();
-  ctx.moveTo(rr, 0);
-  ctx.lineTo(W - rr, 0);
-  ctx.quadraticCurveTo(W, 0, W, rr);
-  ctx.lineTo(W, H - rr);
-  ctx.quadraticCurveTo(W, H, W - rr, H);
-  ctx.lineTo(rr, H);
-  ctx.quadraticCurveTo(0, H, 0, H - rr);
-  ctx.lineTo(0, rr);
-  ctx.quadraticCurveTo(0, 0, rr, 0);
-  ctx.closePath();
+  const pillY = OVERFLOW;
+  function pillPath() {
+    ctx.beginPath();
+    ctx.moveTo(rr, pillY);
+    ctx.lineTo(W - rr, pillY);
+    ctx.quadraticCurveTo(W, pillY, W, pillY + rr);
+    ctx.lineTo(W, pillY + H - rr);
+    ctx.quadraticCurveTo(W, pillY + H, W - rr, pillY + H);
+    ctx.lineTo(rr, pillY + H);
+    ctx.quadraticCurveTo(0, pillY + H, 0, pillY + H - rr);
+    ctx.lineTo(0, pillY + rr);
+    ctx.quadraticCurveTo(0, pillY, rr, pillY);
+    ctx.closePath();
+  }
 
-  // Background gradient
-  const grad = ctx.createLinearGradient(0, 0, W, 0);
-  grad.addColorStop(0, bgColor);
-  const dk = darken(bgColor, 28);
-  grad.addColorStop(1, dk);
-  ctx.fillStyle = grad;
-  ctx.fill();
+  ctx.save();
+  pillPath();
 
-  // Top sheen
-  const sheen = ctx.createLinearGradient(0, 0, 0, H);
+  if (bgMode === "image" && bgImage) {
+    // Draw background image clipped to pill, cover-fit
+    await new Promise(res => {
+      const img = new Image();
+      img.onload = () => {
+        ctx.clip();
+        const scale = Math.max(W / img.width, H / img.height);
+        const dw = img.width * scale, dh = img.height * scale;
+        const dx = (W - dw) / 2, dy = pillY + (H - dh) / 2;
+        ctx.drawImage(img, dx, dy, dw, dh);
+        res();
+      };
+      img.onerror = () => res();
+      img.src = bgImage;
+    });
+  } else {
+    // Color gradient background
+    const grad = ctx.createLinearGradient(0, pillY, W, pillY);
+    grad.addColorStop(0, bgColor);
+    grad.addColorStop(1, darken(bgColor, 28));
+    ctx.fillStyle = grad;
+    ctx.fill();
+  }
+
+  // Top sheen overlay (always)
+  pillPath();
+  const sheen = ctx.createLinearGradient(0, pillY, 0, pillY + H);
   sheen.addColorStop(0,   "rgba(255,255,255,0.13)");
   sheen.addColorStop(0.55,"rgba(255,255,255,0)");
   ctx.fillStyle = sheen;
   ctx.fill();
   ctx.restore();
 
-  // Draw images
+  // Draw images — NOT clipped, so floating images render above pill
   const leftImgs  = isMid ? images.filter((_,i)=>i%2===0) : isLeft  ? images : [];
   const rightImgs = isMid ? images.filter((_,i)=>i%2!==0) : isRight ? images : [];
 
   async function drawImgGroup(imgs, side) {
     if (!imgs.length) return;
     const onLeft = side === "left";
-    const imgH   = bannerStyle === "floating" ? H * 1.45 : H;
+    const imgH   = isFloating ? H * 1.45 : H;
     const startX = onLeft ? -14 * DPR : W - imgH * 0.6 * imgs.length + 14 * DPR;
 
     for (let i = 0; i < imgs.length; i++) {
@@ -118,7 +144,8 @@ async function exportBannerAsPng({
           const ih = imgH;
           const iw = ih * aspect;
           const x  = onLeft ? startX + i * (iw * 0.7) : W - iw * (imgs.length - i) * 0.8 - 14 * DPR;
-          const y  = bannerStyle === "floating" ? H - ih * 0.88 : H - ih;
+          // y anchored to bottom of pill, floating images extend upward into OVERFLOW zone
+          const y  = isFloating ? (pillY + H) - ih * 0.88 : pillY + H - ih;
 
           ctx.save();
           const angle = i===0 ? -0.035 : i===1 ? 0.026 : -0.017;
@@ -140,7 +167,7 @@ async function exportBannerAsPng({
   await drawImgGroup(leftImgs,  "left");
   await drawImgGroup(rightImgs, "right");
 
-  // Draw text
+  // Draw text — centered within pill zone
   const pad   = 20 * DPR;
   const maxW  = isMid ? W * 0.52 : W * 0.5;
   const titleSize = 15 * DPR;
@@ -150,33 +177,29 @@ async function exportBannerAsPng({
   ctx.fillStyle = "#ffffff";
   ctx.textBaseline = "top";
 
-  // Measure title height (simple — single or two lines)
   ctx.font = `800 ${titleSize}px MaisonNeuExt`;
   const titleLines = wrapText(ctx, title || "Judul banner kamu", maxW);
   const titleH = titleLines.length * titleSize * 1.15;
 
-  // Subtitle height
   let subH = 0;
   if (showSubtitle) subH = discValueSize + 4 * DPR;
 
   const totalH = titleH + (showSubtitle ? 4 * DPR + subH : 0);
-  const startY = (H - totalH) / 2;
+  const startY = pillY + (H - totalH) / 2; // centered within pill
 
   let textX;
-  if (isMid)       textX = W / 2;
+  if (isMid)        textX = W / 2;
   else if (isRight) textX = pad;
   else              textX = W - pad;
 
   const align = isMid ? "center" : isRight ? "left" : "right";
   ctx.textAlign = align;
 
-  // Title lines
   ctx.font = `800 ${titleSize}px MaisonNeuExt, sans-serif`;
   titleLines.forEach((line, li) => {
     ctx.fillText(line, textX, startY + li * titleSize * 1.15);
   });
 
-  // Subtitle
   if (showSubtitle) {
     const subY = startY + titleH + 4 * DPR;
     if (subtitleMode === "text") {
@@ -186,7 +209,6 @@ async function exportBannerAsPng({
       const prefix = discountLang === "id" ? "Diskon s.d." : "Discount up to";
       const valStr = `${discountValue}%`;
 
-      // Measure prefix to position value next to it
       ctx.font = `700 ${subSize}px MaisonNeuExt, sans-serif`;
       const prefixW = ctx.measureText(prefix + " ").width;
       ctx.font = `800 ${discValueSize}px MaisonNeuExt, sans-serif`;
@@ -207,11 +229,12 @@ async function exportBannerAsPng({
   }
 
   // Trigger download
+  const filename = isFloating ? "small-banner-floating.png" : "small-banner.png";
   canvas.toBlob(blob => {
     const url = URL.createObjectURL(blob);
     const a   = document.createElement("a");
     a.href     = url;
-    a.download = "small-banner.png";
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
   }, "image/png");
@@ -239,8 +262,11 @@ const SCALE = 3;
 const BW = 361, BH = 90, BR = 16;
 
 function SmallBannerOutput({ title, subtitle, subtitleMode, discountValue, discountLang,
-                              showSubtitle, imagePos, bgColor, images, bannerStyle }) {
+                              showSubtitle, imagePos, bgColor, bgImage, bgMode, images, bannerStyle }) {
   const gradient = `linear-gradient(108deg, ${bgColor} 0%, ${darken(bgColor,28)} 100%)`;
+  const bgStyle = bgMode === "image" && bgImage
+    ? { background: "#000", backgroundImage:`url(${bgImage})`, backgroundSize:"cover", backgroundPosition:"center" }
+    : { background: gradient };
   const isRight = imagePos === "right";
   const isLeft  = imagePos === "left";
   const isMid   = imagePos === "middle";
@@ -293,7 +319,7 @@ function SmallBannerOutput({ title, subtitle, subtitleMode, discountValue, disco
       width:BW*SCALE, height:BH*SCALE, position:"relative", flexShrink:0,
       overflow: bannerStyle==="floating" ? "visible" : "hidden",
     }}>
-      <div style={{ position:"absolute", inset:0, borderRadius:BR*SCALE, background:gradient, zIndex:1 }}>
+      <div style={{ position:"absolute", inset:0, borderRadius:BR*SCALE, ...bgStyle, zIndex:1 }}>
         <div style={{ position:"absolute", inset:0, borderRadius:BR*SCALE,
           background:"linear-gradient(180deg,rgba(255,255,255,0.13) 0%,rgba(255,255,255,0) 55%)" }} />
       </div>
@@ -406,10 +432,22 @@ export default function SmallBannerEditor() {
   const [imagePos,      setImagePos]      = useState("right");
   const [bannerStyle,   setBannerStyle]   = useState("floating");
   const [bgColor,       setBgColor]       = useState("#D0021B");
+  const [bgImage,       setBgImage]       = useState(null);
+  const [bgMode,        setBgMode]        = useState("color");
   const [images,        setImages]        = useState([]);
   const [exporting,     setExporting]     = useState(false);
   const [exported,      setExported]      = useState(false);
-  const fileRef = useRef();
+  const fileRef   = useRef();
+  const bgFileRef = useRef();
+
+  const handleBgUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const r = new FileReader();
+    r.onload = ev => { setBgImage(ev.target.result); setBgMode("image"); };
+    r.readAsDataURL(file);
+    e.target.value = "";
+  };
 
   const handleUpload = useCallback((e) => {
     const files = Array.from(e.target.files);
@@ -432,7 +470,7 @@ export default function SmallBannerEditor() {
     try {
       await exportBannerAsPng({
         title, subtitle, subtitleMode, discountValue, discountLang,
-        showSubtitle, imagePos, bgColor, images, bannerStyle,
+        showSubtitle, imagePos, bgColor, bgImage, bgMode, images, bannerStyle,
         boldFont: FONT_BOLD_B64,
         extraboldFont: FONT_EXTRABOLD_B64,
       });
@@ -448,7 +486,7 @@ export default function SmallBannerEditor() {
 
   const bannerProps = {
     title, subtitle, subtitleMode, discountValue, discountLang,
-    showSubtitle, imagePos, bgColor, images, bannerStyle,
+    showSubtitle, imagePos, bgColor, bgImage, bgMode, images, bannerStyle,
   };
 
   return (
@@ -749,40 +787,80 @@ export default function SmallBannerEditor() {
                   </div>
                 )}
 
-                <SLabel>Background color</SLabel>
-                <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:12}}>
-                  {COLOR_PRESETS.map(c=>(
-                    <div key={c.hex} onClick={()=>setBgColor(c.hex)} title={c.label}
+                <SLabel>Background</SLabel>
+                <div style={{display:"flex",marginBottom:14,border:"1.5px solid #e4e4e7",borderRadius:8,overflow:"hidden"}}>
+                  {[["color","🎨 Color"],["image","🖼 Image"]].map(([m,label])=>(
+                    <button key={m} onClick={()=>setBgMode(m)}
                       style={{
-                        width:26,height:26,borderRadius:"50%",background:c.hex,cursor:"pointer",
-                        border:`3px solid ${bgColor===c.hex?"#18181b":"transparent"}`,
-                        outline:bgColor===c.hex?`2px solid ${c.hex}`:"none",
-                        outlineOffset:2,transition:"all 0.15s",boxShadow:"0 2px 5px #0002",
-                      }}/>
+                        flex:1,padding:"9px 6px",border:"none",cursor:"pointer",
+                        fontFamily:"system-ui,sans-serif",fontSize:12,fontWeight:700,
+                        background:bgMode===m?bgColor:"#fff",
+                        color:bgMode===m?"#fff":"#52525b",transition:"all 0.15s",
+                      }}>{label}</button>
                   ))}
                 </div>
-                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-                  <div style={{position:"relative",width:36,height:36,borderRadius:9,overflow:"hidden",border:"1.5px solid #e4e4e7",flexShrink:0}}>
-                    <div style={{position:"absolute",inset:0,background:bgColor}} />
-                    <input type="color" value={bgColor} onChange={e=>setBgColor(e.target.value)}
-                      style={{position:"absolute",inset:0,opacity:0,cursor:"pointer",width:"100%",height:"100%",padding:0,border:"none"}} />
+
+                {bgMode==="image" ? (
+                  <div style={{marginBottom:20}}>
+                    <button onClick={()=>bgFileRef.current?.click()}
+                      style={{
+                        display:"flex",alignItems:"center",gap:8,padding:"8px 14px",width:"100%",
+                        borderRadius:8,border:`1.5px dashed ${bgImage?"#22c55e":bgColor}`,
+                        background: bgImage?"#f0fdf4":"#fff",
+                        color:bgImage?"#16a34a":bgColor,
+                        fontFamily:"system-ui,sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",marginBottom:10,
+                      }}>
+                      {bgImage ? "✓ Background uploaded — click to replace" : "📁 Upload background image"}
+                    </button>
+                    <input ref={bgFileRef} type="file" accept="image/*" onChange={handleBgUpload} style={{display:"none"}} />
+                    {bgImage && (
+                      <div style={{position:"relative",borderRadius:8,overflow:"hidden",border:"1.5px solid #e4e4e7",marginBottom:8}}>
+                        <img src={bgImage} alt="bg preview" style={{width:"100%",height:60,objectFit:"cover",display:"block"}} />
+                        <button onClick={()=>{setBgImage(null);setBgMode("color");}}
+                          style={{position:"absolute",top:5,right:5,width:22,height:22,borderRadius:6,border:"none",background:"#fee2e2",color:"#dc2626",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+                      </div>
+                    )}
+                    <div style={{fontSize:11,color:"#71717a",lineHeight:1.5}}>
+                      Image will be cover-fit to the banner. Recommended: 1083×270px or wider.
+                    </div>
                   </div>
-                  <input value={bgColor}
-                    onChange={e=>{ if(/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value)) setBgColor(e.target.value); }}
-                    style={{flex:1,padding:"8px 10px",borderRadius:7,border:"1.5px solid #e4e4e7",fontSize:13,fontFamily:"monospace",outline:"none",color:"#18181b",letterSpacing:1}}
-                    onFocus={e=>e.target.style.borderColor=bgColor}
-                    onBlur={e=>e.target.style.borderColor="#e4e4e7"}
-                  />
-                </div>
-                <div style={{padding:"8px 11px",borderRadius:8,background:"#f4f4f5",fontSize:11,lineHeight:1.5}}>
-                  <span style={{fontWeight:700,color:"#52525b"}}>Contrast: </span>
-                  {lum<0.18
-                    ? <span style={{color:"#16a34a",fontWeight:700}}>✓ Dark — white text legible</span>
-                    : lum<0.38
-                      ? <span style={{color:"#d97706",fontWeight:700}}>⚠ Moderate — verify on mobile</span>
-                      : <span style={{color:"#dc2626",fontWeight:700}}>✗ Too light — white text will fail</span>
-                  }
-                </div>
+                ) : (
+                  <div style={{marginBottom:20}}>
+                    <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:12}}>
+                      {COLOR_PRESETS.map(c=>(
+                        <div key={c.hex} onClick={()=>setBgColor(c.hex)} title={c.label}
+                          style={{
+                            width:26,height:26,borderRadius:"50%",background:c.hex,cursor:"pointer",
+                            border:`3px solid ${bgColor===c.hex?"#18181b":"transparent"}`,
+                            outline:bgColor===c.hex?`2px solid ${c.hex}`:"none",
+                            outlineOffset:2,transition:"all 0.15s",boxShadow:"0 2px 5px #0002",
+                          }}/>
+                      ))}
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                      <div style={{position:"relative",width:36,height:36,borderRadius:9,overflow:"hidden",border:"1.5px solid #e4e4e7",flexShrink:0}}>
+                        <div style={{position:"absolute",inset:0,background:bgColor}} />
+                        <input type="color" value={bgColor} onChange={e=>setBgColor(e.target.value)}
+                          style={{position:"absolute",inset:0,opacity:0,cursor:"pointer",width:"100%",height:"100%",padding:0,border:"none"}} />
+                      </div>
+                      <input value={bgColor}
+                        onChange={e=>{ if(/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value)) setBgColor(e.target.value); }}
+                        style={{flex:1,padding:"8px 10px",borderRadius:7,border:"1.5px solid #e4e4e7",fontSize:13,fontFamily:"monospace",outline:"none",color:"#18181b",letterSpacing:1}}
+                        onFocus={e=>e.target.style.borderColor=bgColor}
+                        onBlur={e=>e.target.style.borderColor="#e4e4e7"}
+                      />
+                    </div>
+                    <div style={{padding:"8px 11px",borderRadius:8,background:"#f4f4f5",fontSize:11,lineHeight:1.5}}>
+                      <span style={{fontWeight:700,color:"#52525b"}}>Contrast: </span>
+                      {lum<0.18
+                        ? <span style={{color:"#16a34a",fontWeight:700}}>✓ Dark — white text legible</span>
+                        : lum<0.38
+                          ? <span style={{color:"#d97706",fontWeight:700}}>⚠ Moderate — verify on mobile</span>
+                          : <span style={{color:"#dc2626",fontWeight:700}}>✗ Too light — white text will fail</span>
+                      }
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

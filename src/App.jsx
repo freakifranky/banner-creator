@@ -52,11 +52,6 @@ async function exportBannerAsPng({
   const BW = 361, BH = 90, BR = 16, DPR = 3;
   const W = BW * DPR, H = BH * DPR;
 
-  const canvas = document.createElement("canvas");
-  canvas.width  = W;
-  canvas.height = H;
-  const ctx = canvas.getContext("2d");
-
   // Register fonts
   const fontBold      = new FontFace("MaisonNeuExt", `url(data:font/ttf;base64,${boldFont})`,      { weight:"700" });
   const fontExtrabold = new FontFace("MaisonNeuExt", `url(data:font/ttf;base64,${extraboldFont})`, { weight:"800" });
@@ -68,20 +63,30 @@ async function exportBannerAsPng({
   const isLeft  = imagePos === "left";
   const isMid   = imagePos === "middle";
 
-  // Clip to pill (blocked style) or full canvas (floating)
-  ctx.save();
+  // ── Step 1: Draw background on final canvas (clipped to pill) ──
+  const canvas = document.createElement("canvas");
+  canvas.width  = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+
   const rr = BR * DPR;
-  ctx.beginPath();
-  ctx.moveTo(rr, 0);
-  ctx.lineTo(W - rr, 0);
-  ctx.quadraticCurveTo(W, 0, W, rr);
-  ctx.lineTo(W, H - rr);
-  ctx.quadraticCurveTo(W, H, W - rr, H);
-  ctx.lineTo(rr, H);
-  ctx.quadraticCurveTo(0, H, 0, H - rr);
-  ctx.lineTo(0, rr);
-  ctx.quadraticCurveTo(0, 0, rr, 0);
-  ctx.closePath();
+  function pillPath(c) {
+    c.beginPath();
+    c.moveTo(rr, 0);
+    c.lineTo(W - rr, 0);
+    c.quadraticCurveTo(W, 0, W, rr);
+    c.lineTo(W, H - rr);
+    c.quadraticCurveTo(W, H, W - rr, H);
+    c.lineTo(rr, H);
+    c.quadraticCurveTo(0, H, 0, H - rr);
+    c.lineTo(0, rr);
+    c.quadraticCurveTo(0, 0, rr, 0);
+    c.closePath();
+  }
+
+  ctx.save();
+  pillPath(ctx);
+  ctx.clip();
 
   // Background gradient
   const grad = ctx.createLinearGradient(0, 0, W, 0);
@@ -96,18 +101,27 @@ async function exportBannerAsPng({
   sheen.addColorStop(0,   "rgba(255,255,255,0.13)");
   sheen.addColorStop(0.55,"rgba(255,255,255,0)");
   ctx.fillStyle = sheen;
+  pillPath(ctx);
   ctx.fill();
   ctx.restore();
 
-  // Draw images
+  // ── Step 2: Draw images on an OVERSIZED offscreen canvas (captures overflow) ──
+  const OVERFLOW = bannerStyle === "floating" ? H * 0.6 : 0; // extra space above
+  const OW = W, OH = H + OVERFLOW;
+  const offCanvas = document.createElement("canvas");
+  offCanvas.width  = OW;
+  offCanvas.height = OH;
+  const offCtx = offCanvas.getContext("2d");
+
   const leftImgs  = isMid ? images.filter((_,i)=>i%2===0) : isLeft  ? images : [];
   const rightImgs = isMid ? images.filter((_,i)=>i%2!==0) : isRight ? images : [];
 
   async function drawImgGroup(imgs, side) {
     if (!imgs.length) return;
     const onLeft = side === "left";
+    // Use OH as reference so floating images render fully in the tall offscreen canvas
     const imgH   = bannerStyle === "floating" ? H * 1.45 : H;
-    const startX = onLeft ? -14 * DPR : W - imgH * 0.6 * imgs.length + 14 * DPR;
+    const startX = onLeft ? -14 * DPR : OW - imgH * 0.6 * imgs.length + 14 * DPR;
 
     for (let i = 0; i < imgs.length; i++) {
       await new Promise(res => {
@@ -117,18 +131,20 @@ async function exportBannerAsPng({
           const aspect = img.width / img.height;
           const ih = imgH;
           const iw = ih * aspect;
-          const x  = onLeft ? startX + i * (iw * 0.7) : W - iw * (imgs.length - i) * 0.8 - 14 * DPR;
-          const y  = bannerStyle === "floating" ? H - ih * 0.88 : H - ih;
+          const x  = onLeft ? startX + i * (iw * 0.7) : OW - iw * (imgs.length - i) * 0.8 - 14 * DPR;
+          // y offset: shift down by OVERFLOW so bottom of image aligns with bottom of OH
+          const baseY = bannerStyle === "floating" ? H - ih * 0.88 : H - ih;
+          const y = OVERFLOW + baseY;
 
-          ctx.save();
+          offCtx.save();
           const angle = i===0 ? -0.035 : i===1 ? 0.026 : -0.017;
-          ctx.translate(x + iw/2, y + ih/2);
-          ctx.rotate(angle);
-          ctx.shadowColor = "rgba(0,0,0,0.35)";
-          ctx.shadowBlur  = 14 * DPR;
-          ctx.shadowOffsetY = 6 * DPR;
-          ctx.drawImage(img, -iw/2, -ih/2, iw, ih);
-          ctx.restore();
+          offCtx.translate(x + iw/2, y + ih/2);
+          offCtx.rotate(angle);
+          offCtx.shadowColor = "rgba(0,0,0,0.35)";
+          offCtx.shadowBlur  = 14 * DPR;
+          offCtx.shadowOffsetY = 6 * DPR;
+          offCtx.drawImage(img, -iw/2, -ih/2, iw, ih);
+          offCtx.restore();
           res();
         };
         img.onerror = () => res();
@@ -139,6 +155,10 @@ async function exportBannerAsPng({
 
   await drawImgGroup(leftImgs,  "left");
   await drawImgGroup(rightImgs, "right");
+
+  // ── Step 3: Composite offscreen onto final canvas (crop top OVERFLOW px, draw unclipped) ──
+  // This lets the product image overflow ABOVE the pill but the final PNG is exactly 361×90
+  ctx.drawImage(offCanvas, 0, 0, OW, OH, 0, -OVERFLOW, OW, OH);
 
   // Draw text
   const pad   = 20 * DPR;
@@ -474,14 +494,6 @@ export default function SmallBannerEditor() {
             height:52, background:"#fff", borderBottom:"1px solid #e4e4e7",
             display:"flex", alignItems:"center", padding:"0 20px", gap:12, flexShrink:0,
           }}>
-            <div style={{
-              width:28,height:28,borderRadius:6,background:"#f4f4f5",
-              display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",
-            }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#52525b" strokeWidth="2.5" strokeLinecap="round">
-                <path d="M19 12H5M5 12l7-7M5 12l7 7"/>
-              </svg>
-            </div>
             <span style={{fontSize:14,fontWeight:700,color:"#18181b"}}>Small Banner</span>
             <span style={{fontSize:11,color:"#71717a",background:"#f4f4f5",borderRadius:6,padding:"2px 8px",fontWeight:600,border:"1px solid #e4e4e7"}}>361 × 90 px</span>
           </div>

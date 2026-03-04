@@ -16,7 +16,6 @@ const fontStyle = `
   }
 `;
 
-// ─── Color presets ────────────────────────────────────────────
 const COLOR_PRESETS = [
   { hex:"#D0021B", label:"Red"     },
   { hex:"#1A8C2E", label:"Green"   },
@@ -42,26 +41,25 @@ function luminance(hex) {
   return 0.2126*(r/255)+0.7152*(g/255)+0.0722*(b/255);
 }
 
-// ─── Banner canvas (true 361×90, scale(2) for display) ───────
-// Style 1 = PNG/floating: overflow visible, no bg clip
-// Style 2 = Blocked: overflow hidden, images clipped to pill
+// True output: 361x90. We render at 3x internally (1083x270) then
+// scale DOWN with transform to fit nicely in the canvas area.
+// This gives crisp rendering without clipping issues.
+const SCALE = 3;
+const BW = 361, BH = 90, BR = 16;
 
 function SmallBannerOutput({ title, subtitle, subtitleMode, discountValue, discountLang,
                               showSubtitle, imagePos, bgColor, images, bannerStyle }) {
   const gradient = `linear-gradient(108deg, ${bgColor} 0%, ${darken(bgColor,28)} 100%)`;
-  const BW = 361, BH = 90, BR = 16;
 
   const isRight = imagePos === "right";
   const isLeft  = imagePos === "left";
   const isMid   = imagePos === "middle";
 
-  // For middle: all images show, split into left group (even) and right group (odd)
   const leftImgs  = isMid ? images.filter((_,i)=>i%2===0) : isLeft  ? images : [];
   const rightImgs = isMid ? images.filter((_,i)=>i%2!==0) : isRight ? images : [];
 
-  const imgH = bannerStyle === "floating" ? BH * 1.45 : BH * 1.0;
-  const imgBottom = bannerStyle === "floating" ? -(imgH - BH) * 0.55 : 0;  // float above
-  const imgOverlapX = bannerStyle === "floating" ? -14 : -8;
+  const imgH      = bannerStyle === "floating" ? BH * SCALE * 1.45 : BH * SCALE;
+  const overlapX  = bannerStyle === "floating" ? -14 * SCALE : -8 * SCALE;
 
   function ImgStack({ imgs, side }) {
     if (!imgs.length) return null;
@@ -69,15 +67,14 @@ function SmallBannerOutput({ title, subtitle, subtitleMode, discountValue, disco
     return (
       <div style={{
         position:"absolute",
-        [onLeft?"left":"right"]: imgOverlapX,
-        bottom: imgBottom,
+        [onLeft?"left":"right"]: overlapX,
+        bottom: 0,
         height: imgH,
-        display:"flex",
-        alignItems:"flex-end",
-        gap:2, zIndex:4,
-        pointerEvents:"none",
+        display:"flex", alignItems:"flex-end",
+        gap: 2 * SCALE,
+        zIndex: 4, pointerEvents:"none",
       }}>
-        {imgs.map((img,i)=>(
+        {imgs.map((img,i) => (
           <img key={i} src={img.src} alt=""
             style={{
               height:"100%", width:"auto", objectFit:"contain",
@@ -92,71 +89,71 @@ function SmallBannerOutput({ title, subtitle, subtitleMode, discountValue, disco
     );
   }
 
-  // Subtitle rendering
   function SubtitleEl() {
     if (!showSubtitle) return null;
     if (subtitleMode === "text") {
       return (
-        <div style={{
-          fontFamily:"'MaisonNeuExt',sans-serif", fontWeight:800,
-          fontSize:10, lineHeight:1, color:"#fff", marginTop:4,
-        }}>{subtitle}</div>
+        <div style={{ fontFamily:"'MaisonNeuExt',sans-serif", fontWeight:800,
+          fontSize: 10 * SCALE, lineHeight:1, color:"#fff", marginTop: 4 * SCALE }}>
+          {subtitle}
+        </div>
       );
     }
-    // Discount mode: "Diskon s.d. XX%" or "Discount up to XX%"
     const prefix = discountLang === "id" ? "Diskon s.d." : "Discount up to";
     return (
-      <div style={{ display:"flex", alignItems:"baseline", gap:3, marginTop:4, flexWrap:"wrap" }}>
-        <span style={{
-          fontFamily:"'MaisonNeuExt',sans-serif", fontWeight:700,
-          fontSize:10, lineHeight:1, color:"#fff",
-        }}>{prefix}</span>
-        <span style={{
-          fontFamily:"'MaisonNeuExt',sans-serif", fontWeight:800,
-          fontSize:14, lineHeight:1, color:"#fff",
-        }}>{discountValue}%</span>
+      <div style={{ display:"flex", alignItems:"baseline", gap: 3 * SCALE,
+        marginTop: 4 * SCALE, flexWrap:"wrap" }}>
+        <span style={{ fontFamily:"'MaisonNeuExt',sans-serif", fontWeight:700,
+          fontSize: 10 * SCALE, lineHeight:1, color:"#fff" }}>{prefix}</span>
+        <span style={{ fontFamily:"'MaisonNeuExt',sans-serif", fontWeight:800,
+          fontSize: 14 * SCALE, lineHeight:1, color:"#fff" }}>{discountValue}%</span>
       </div>
     );
   }
 
-  const textMaxW = isMid ? "52%" : "48%";
-
+  // Rendered at SCALE×, positioned correctly, then the outer wrapper scales it back down
   return (
     <div style={{
-      width:BW, height:BH, position:"relative", flexShrink:0,
-      // Floating: no overflow clip so images can protrude; Blocked: clip to pill
+      width:  BW * SCALE,
+      height: BH * SCALE,
+      position: "relative",
+      flexShrink: 0,
       overflow: bannerStyle === "floating" ? "visible" : "hidden",
     }}>
-      {/* Pill background */}
+      {/* Pill */}
       <div style={{
-        position:"absolute", inset:0, borderRadius:BR,
-        background:gradient, zIndex:1,
+        position:"absolute", inset:0,
+        borderRadius: BR * SCALE,
+        background: gradient,
+        zIndex: 1,
       }}>
-        {/* Inner top sheen */}
         <div style={{
-          position:"absolute", inset:0, borderRadius:BR,
+          position:"absolute", inset:0,
+          borderRadius: BR * SCALE,
           background:"linear-gradient(180deg,rgba(255,255,255,0.13) 0%,rgba(255,255,255,0) 55%)",
         }} />
       </div>
 
-      {/* Images — sit above pill bg, below text */}
       <ImgStack imgs={leftImgs}  side="left"  />
       <ImgStack imgs={rightImgs} side="right" />
 
       {/* Text */}
       <div style={{
         position:"absolute", zIndex:5,
-        top:"50%", maxWidth:textMaxW,
+        top:"50%",
+        maxWidth: isMid ? "52%" : "50%",
+        padding: `0 ${20*SCALE}px`,
         ...(isMid
           ? { left:"50%", transform:"translate(-50%,-50%)", textAlign:"center" }
           : isRight
-            ? { left:20,  transform:"translateY(-50%)", textAlign:"left" }
-            : { right:20, transform:"translateY(-50%)", textAlign:"right" }
+            ? { left:0,   transform:"translateY(-50%)", textAlign:"left" }
+            : { right:0,  transform:"translateY(-50%)", textAlign:"right" }
         ),
       }}>
         <div style={{
           fontFamily:"'MaisonNeuExt',sans-serif", fontWeight:800,
-          fontSize:15, lineHeight:1.15, color:"#fff",
+          fontSize: 15 * SCALE,
+          lineHeight: 1.15, color:"#fff",
           whiteSpace:"pre-wrap", wordBreak:"break-word",
         }}>{title || "Judul banner kamu"}</div>
         <SubtitleEl />
@@ -165,13 +162,36 @@ function SmallBannerOutput({ title, subtitle, subtitleMode, discountValue, disco
   );
 }
 
-// ─── Tabs ─────────────────────────────────────────────────────
+// Wrapper that renders at 3× then scales back to 1× (true px size)
+// but displays at 2× for comfortable viewing
+function BannerCanvas(props) {
+  const DISPLAY_SCALE = 2; // how big it appears on screen
+  return (
+    <div style={{
+      width:  BW * DISPLAY_SCALE,
+      height: BH * DISPLAY_SCALE,
+      flexShrink: 0,
+      position: "relative",
+      // Extra padding so floating images aren't clipped in the viewport
+      overflow: props.bannerStyle === "floating" ? "visible" : "hidden",
+    }}>
+      <div style={{
+        position: "absolute",
+        top: "50%", left: "50%",
+        transform: `translate(-50%, -50%) scale(${DISPLAY_SCALE / SCALE})`,
+        transformOrigin: "center center",
+      }}>
+        <SmallBannerOutput {...props} />
+      </div>
+    </div>
+  );
+}
+
 const TABS = [
   { id:"text",    icon:<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg> },
   { id:"visuals", icon:<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg> },
 ];
 
-// ─── Helpers ──────────────────────────────────────────────────
 const SLabel = ({children}) => <div style={{fontSize:13,fontWeight:700,color:"#18181b",marginBottom:5}}>{children}</div>;
 const SHint  = ({children}) => <div style={{fontSize:10,color:"#a1a1aa",marginBottom:6,fontFamily:"monospace",lineHeight:1.4}}>{children}</div>;
 const SCount = ({n}) => <div style={{fontSize:10,color:"#a1a1aa",textAlign:"right",marginTop:3}}>{n}/365</div>;
@@ -183,7 +203,6 @@ function Toggle({on,color,onToggle}) {
     </div>
   );
 }
-
 function RadioDot({active,color,onClick}) {
   return (
     <div onClick={onClick} style={{width:18,height:18,borderRadius:"50%",border:`2px solid ${active?color:"#d1d5db"}`,background:active?color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer",transition:"all 0.15s"}}>
@@ -191,29 +210,26 @@ function RadioDot({active,color,onClick}) {
     </div>
   );
 }
-
 const iBase = {
   width:"100%", boxSizing:"border-box", padding:"9px 12px",
   borderRadius:8, border:"1.5px solid #e4e4e7",
   fontSize:13, fontFamily:"'Nunito',system-ui,sans-serif",
-  outline:"none", color:"#18181b", background:"#fff",
-  transition:"border 0.15s",
+  outline:"none", color:"#18181b", background:"#fff", transition:"border 0.15s",
 };
 
-// ─── Main ─────────────────────────────────────────────────────
 export default function SmallBannerEditor() {
-  const [tab,            setTab]            = useState("text");
-  const [title,          setTitle]          = useState("");
-  const [showSubtitle,   setShowSubtitle]   = useState(false);
-  const [subtitleMode,   setSubtitleMode]   = useState("discount"); // "discount" | "text"
-  const [subtitle,       setSubtitle]       = useState("");
-  const [discountValue,  setDiscountValue]  = useState("25");
-  const [discountLang,   setDiscountLang]   = useState("id");       // "id" | "en"
-  const [imagePos,       setImagePos]       = useState("right");
-  const [bannerStyle,    setBannerStyle]    = useState("floating"); // "floating" | "blocked"
-  const [bgColor,        setBgColor]        = useState("#D0021B");
-  const [images,         setImages]         = useState([]);
-  const [exported,       setExported]       = useState(false);
+  const [tab,           setTab]           = useState("text");
+  const [title,         setTitle]         = useState("");
+  const [showSubtitle,  setShowSubtitle]  = useState(false);
+  const [subtitleMode,  setSubtitleMode]  = useState("discount");
+  const [subtitle,      setSubtitle]      = useState("");
+  const [discountValue, setDiscountValue] = useState("25");
+  const [discountLang,  setDiscountLang]  = useState("id");
+  const [imagePos,      setImagePos]      = useState("right");
+  const [bannerStyle,   setBannerStyle]   = useState("floating");
+  const [bgColor,       setBgColor]       = useState("#D0021B");
+  const [images,        setImages]        = useState([]);
+  const [exported,      setExported]      = useState(false);
   const fileRef = useRef();
 
   const handleUpload = useCallback((e) => {
@@ -226,8 +242,7 @@ export default function SmallBannerEditor() {
 
   const removeImage = idx => setImages(prev=>prev.filter((_,i)=>i!==idx));
   const updateLink  = (idx,val) => setImages(prev=>prev.map((img,i)=>i===idx?{...img,link:val}:img));
-
-  const addFromUrl = () => {
+  const addFromUrl  = () => {
     const el = document.getElementById("img-url-input");
     const val = el?.value.trim();
     if (val) { setImages(prev=>[...prev,{src:val,link:""}]); if(el) el.value=""; }
@@ -235,14 +250,28 @@ export default function SmallBannerEditor() {
 
   const lum = luminance(bgColor.length===7 ? bgColor : "#D0021B");
 
+  const bannerProps = {
+    title, subtitle, subtitleMode, discountValue, discountLang,
+    showSubtitle, imagePos, bgColor, images, bannerStyle,
+  };
+
   return (
     <>
       <style>{fontStyle}</style>
-      <div style={{display:"flex",height:"100vh",background:"#f4f4f5",fontFamily:"'Nunito',system-ui,sans-serif",overflow:"hidden"}}>
+      <div style={{
+        display:"flex", height:"100vh",
+        background:"#f4f4f5",
+        fontFamily:"'Nunito',system-ui,sans-serif",
+        overflow:"hidden",
+      }}>
 
-        {/* ── Canvas ─────────────────────────────────────────── */}
-        <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-          <div style={{height:52,background:"#fff",borderBottom:"1px solid #e4e4e7",display:"flex",alignItems:"center",padding:"0 18px",gap:12,flexShrink:0}}>
+        {/* ── Canvas area ── */}
+        <div style={{flex:1, display:"flex", flexDirection:"column", overflow:"hidden", minWidth:0}}>
+          {/* Topbar */}
+          <div style={{
+            height:52, background:"#fff", borderBottom:"1px solid #e4e4e7",
+            display:"flex", alignItems:"center", padding:"0 18px", gap:12, flexShrink:0,
+          }}>
             <button style={{width:32,height:32,borderRadius:8,border:"1.5px solid #e4e4e7",background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#52525b"}}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M19 12H5M5 12l7-7M5 12l7 7"/></svg>
             </button>
@@ -250,29 +279,32 @@ export default function SmallBannerEditor() {
             <span style={{fontSize:11,color:"#71717a",background:"#f4f4f5",borderRadius:6,padding:"2px 8px",fontWeight:600}}>361 × 90 px</span>
           </div>
 
-          {/* Grid + canvas */}
-          <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",backgroundImage:"radial-gradient(circle,#d1d5db 1px,transparent 1px)",backgroundSize:"20px 20px",backgroundColor:"#f9fafb",padding:60,overflow:"hidden"}}>
-            {/* Extra wrapper so floating images have breathing room */}
-            <div style={{padding:"40px 30px", display:"flex", alignItems:"center", justifyContent:"center"}}>
-              <div style={{transform:"scale(2)",transformOrigin:"center center"}}>
-                <SmallBannerOutput
-                  title={title} subtitle={subtitle} subtitleMode={subtitleMode}
-                  discountValue={discountValue} discountLang={discountLang}
-                  showSubtitle={showSubtitle} imagePos={imagePos}
-                  bgColor={bgColor} images={images} bannerStyle={bannerStyle}
-                />
-              </div>
-            </div>
+          {/* Dot grid canvas — centers the banner */}
+          <div style={{
+            flex:1,
+            display:"flex", alignItems:"center", justifyContent:"center",
+            backgroundImage:"radial-gradient(circle, #d1d5db 1px, transparent 1px)",
+            backgroundSize:"20px 20px",
+            backgroundColor:"#f9fafb",
+            overflow:"hidden",
+            padding: 60,
+          }}>
+            <BannerCanvas {...bannerProps} />
           </div>
 
-          <div style={{height:36,background:"#fff",borderTop:"1px solid #e4e4e7",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+          <div style={{
+            height:36, background:"#fff", borderTop:"1px solid #e4e4e7",
+            display:"flex", alignItems:"center", justifyContent:"center", gap:6,
+          }}>
             <div style={{width:8,height:8,borderRadius:"50%",background:"#22c55e"}} />
-            <span style={{fontSize:11,color:"#71717a",fontWeight:600}}>True size: 361 × 90 px · Displayed at 2×</span>
+            <span style={{fontSize:11,color:"#71717a",fontWeight:600}}>
+              True size: 361 × 90 px · Displayed at 2×
+            </span>
           </div>
         </div>
 
-        {/* ── Right panel ─────────────────────────────────────── */}
-        <div style={{display:"flex",borderLeft:"1px solid #e4e4e7",background:"#fff",flexShrink:0}}>
+        {/* ── Right panel ── */}
+        <div style={{display:"flex", borderLeft:"1px solid #e4e4e7", background:"#fff", flexShrink:0}}>
           {/* Tab strip */}
           <div style={{width:44,borderRight:"1px solid #e4e4e7",display:"flex",flexDirection:"column",alignItems:"center",paddingTop:14,gap:6,background:"#fafafa"}}>
             {TABS.map(t=>(
@@ -283,10 +315,10 @@ export default function SmallBannerEditor() {
             ))}
           </div>
 
-          {/* Panel body */}
+          {/* Panel */}
           <div style={{width:300,padding:"22px 20px",overflowY:"auto"}}>
 
-            {/* ── TEXT TAB ──────────────────────────────────── */}
+            {/* TEXT TAB */}
             {tab==="text" && (
               <div>
                 <div style={{fontSize:16,fontWeight:800,color:"#18181b",marginBottom:2}}>Banner creator</div>
@@ -294,7 +326,6 @@ export default function SmallBannerEditor() {
                   Capture attention with a clear and concise text overlay that directly communicates your offer.
                 </div>
 
-                {/* Title */}
                 <SLabel>Title</SLabel>
                 <SHint>MaisonNeuExt ExtraBold · 15px · LH 100%</SHint>
                 <textarea value={title} onChange={e=>setTitle(e.target.value)} maxLength={365} rows={3}
@@ -305,7 +336,6 @@ export default function SmallBannerEditor() {
                 />
                 <SCount n={title.length} />
 
-                {/* Subtitle */}
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:18,marginBottom:4}}>
                   <SLabel>Subtitle</SLabel>
                   <Toggle on={showSubtitle} color={bgColor} onToggle={()=>setShowSubtitle(v=>!v)} />
@@ -313,51 +343,29 @@ export default function SmallBannerEditor() {
 
                 {showSubtitle && (
                   <div>
-                    {/* Mode toggle: Discount / Text */}
                     <div style={{display:"flex",gap:0,marginBottom:14,border:"1.5px solid #e4e4e7",borderRadius:8,overflow:"hidden"}}>
                       {["discount","text"].map(m=>(
                         <button key={m} onClick={()=>setSubtitleMode(m)}
-                          style={{
-                            flex:1,padding:"8px",border:"none",cursor:"pointer",
-                            fontFamily:"'Nunito',system-ui,sans-serif",fontSize:13,fontWeight:700,
-                            background:subtitleMode===m ? bgColor:"#fff",
-                            color:subtitleMode===m ? "#fff":"#52525b",
-                            transition:"all 0.15s",
-                            textTransform:"capitalize",
-                          }}>
-                          {m === "discount" ? "Discount" : "Free Text"}
+                          style={{flex:1,padding:"8px",border:"none",cursor:"pointer",fontFamily:"'Nunito',system-ui,sans-serif",fontSize:13,fontWeight:700,background:subtitleMode===m?bgColor:"#fff",color:subtitleMode===m?"#fff":"#52525b",transition:"all 0.15s",textTransform:"capitalize"}}>
+                          {m==="discount"?"Discount":"Free Text"}
                         </button>
                       ))}
                     </div>
 
-                    {subtitleMode === "discount" ? (
+                    {subtitleMode==="discount" ? (
                       <div>
-                        <SHint>Prefix: MaisonNeuExt Bold · 10px · Value: MaisonNeuExt ExtraBold · 14px</SHint>
-                        {/* Language toggle */}
+                        <SHint>Prefix: Bold 10px · Value: ExtraBold 14px</SHint>
                         <div style={{display:"flex",gap:6,marginBottom:10}}>
                           {[["id","🇮🇩  Bahasa"],["en","🇬🇧  English"]].map(([lang,label])=>(
                             <button key={lang} onClick={()=>setDiscountLang(lang)}
-                              style={{
-                                flex:1,padding:"7px 8px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",
-                                fontFamily:"'Nunito',system-ui,sans-serif",
-                                border:`1.5px solid ${discountLang===lang ? bgColor:"#e4e4e7"}`,
-                                background:discountLang===lang ? bgColor+"14":"#fff",
-                                color:discountLang===lang ? bgColor:"#52525b",
-                              }}>
+                              style={{flex:1,padding:"7px 8px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"'Nunito',system-ui,sans-serif",border:`1.5px solid ${discountLang===lang?bgColor:"#e4e4e7"}`,background:discountLang===lang?bgColor+"14":"#fff",color:discountLang===lang?bgColor:"#52525b"}}>
                               {label}
                             </button>
                           ))}
                         </div>
-                        {/* Preview of prefix */}
-                        <div style={{fontSize:11,color:"#a1a1aa",marginBottom:8}}>
-                          Preview: <span style={{fontWeight:700,color:"#18181b"}}>
-                            {discountLang==="id" ? "Diskon s.d." : "Discount up to"} <span style={{fontSize:13}}>{discountValue}%</span>
-                          </span>
-                        </div>
-                        {/* Discount value input */}
                         <div style={{display:"flex",alignItems:"center",gap:8}}>
                           <span style={{fontSize:12,color:"#52525b",whiteSpace:"nowrap"}}>
-                            {discountLang==="id" ? "Diskon s.d." : "Discount up to"}
+                            {discountLang==="id"?"Diskon s.d.":"Discount up to"}
                           </span>
                           <input type="number" min="1" max="99" value={discountValue}
                             onChange={e=>setDiscountValue(e.target.value)}
@@ -385,59 +393,47 @@ export default function SmallBannerEditor() {
 
                 <button onClick={()=>setExported(true)}
                   style={{width:"100%",padding:"11px",borderRadius:8,border:"none",background:bgColor,color:"#fff",fontFamily:"'Nunito',system-ui,sans-serif",fontSize:14,fontWeight:800,cursor:"pointer",marginTop:24,transition:"opacity 0.15s"}}
-                  onMouseEnter={e=>e.target.style.opacity=0.86} onMouseLeave={e=>e.target.style.opacity=1}>
+                  onMouseEnter={e=>e.target.style.opacity=0.86}
+                  onMouseLeave={e=>e.target.style.opacity=1}>
                   {exported?"✓ Exported!":"Export"}
                 </button>
                 {exported && <div style={{marginTop:8,fontSize:12,color:"#22c55e",textAlign:"center",fontWeight:700}}>Spec saved for design handoff</div>}
               </div>
             )}
 
-            {/* ── VISUALS TAB ───────────────────────────────── */}
+            {/* VISUALS TAB */}
             {tab==="visuals" && (
               <div>
                 <div style={{fontSize:16,fontWeight:800,color:"#18181b",marginBottom:2}}>Visuals and Style</div>
                 <div style={{fontSize:12,color:"#71717a",marginBottom:20}}>Customize the look and feel.</div>
 
-                {/* Banner style */}
                 <SLabel>Banner style</SLabel>
                 <div style={{display:"flex",gap:0,marginBottom:20,border:"1.5px solid #e4e4e7",borderRadius:8,overflow:"hidden"}}>
-                  {[
-                    ["floating","🖼  Floating (PNG)"],
-                    ["blocked", "▬  Blocked"],
-                  ].map(([s,label])=>(
+                  {[["floating","🖼  Floating (PNG)"],["blocked","▬  Blocked"]].map(([s,label])=>(
                     <button key={s} onClick={()=>setBannerStyle(s)}
-                      style={{
-                        flex:1,padding:"9px 6px",border:"none",cursor:"pointer",
-                        fontFamily:"'Nunito',system-ui,sans-serif",fontSize:12,fontWeight:700,
-                        background:bannerStyle===s ? bgColor:"#fff",
-                        color:bannerStyle===s ? "#fff":"#52525b",
-                        transition:"all 0.15s",
-                      }}>
+                      style={{flex:1,padding:"9px 6px",border:"none",cursor:"pointer",fontFamily:"'Nunito',system-ui,sans-serif",fontSize:12,fontWeight:700,background:bannerStyle===s?bgColor:"#fff",color:bannerStyle===s?"#fff":"#52525b",transition:"all 0.15s"}}>
                       {label}
                     </button>
                   ))}
                 </div>
 
-                {/* Image position */}
                 <SLabel>Image position</SLabel>
                 <div style={{marginBottom:20}}>
                   {["left","middle","right"].map(pos=>(
                     <label key={pos} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,cursor:"pointer"}}>
                       <RadioDot active={imagePos===pos} color={bgColor} onClick={()=>setImagePos(pos)} />
                       <span style={{fontSize:13,color:imagePos===pos?"#18181b":"#52525b",fontWeight:imagePos===pos?700:400,textTransform:"capitalize"}}>
-                        {pos}{pos==="middle" ? " — images split left & right":""}
+                        {pos}{pos==="middle"?" — splits left & right":""}
                       </span>
                     </label>
                   ))}
                 </div>
 
-                {/* Product images */}
                 <SLabel>Product images</SLabel>
                 <div style={{fontSize:11,color:"#71717a",marginBottom:10,lineHeight:1.5}}>
                   {imagePos==="middle"
-                    ? "Upload multiple images — they'll split left and right automatically."
-                    : "Upload cutout (transparent BG) images. Add an optional destination URL per image."
-                  }
+                    ? "Upload multiple — even-numbered go left, odd go right."
+                    : "Cutout (transparent BG) images recommended."}
                 </div>
                 <button onClick={()=>fileRef.current?.click()}
                   style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderRadius:8,border:`1.5px solid ${bgColor}`,background:"#fff",color:bgColor,fontFamily:"'Nunito',system-ui,sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",marginBottom:12}}>
@@ -467,7 +463,6 @@ export default function SmallBannerEditor() {
                           <div style={{width:40,height:40,borderRadius:7,border:"1.5px solid #e4e4e7",overflow:"hidden",background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                             <img src={img.src} alt="" style={{width:"100%",height:"100%",objectFit:"contain"}} />
                           </div>
-                          {/* Left/Right badge for middle layout */}
                           {imagePos==="middle" && (
                             <span style={{fontSize:10,background:bgColor+"22",color:bgColor,borderRadius:5,padding:"2px 6px",fontWeight:700}}>
                               {idx%2===0?"← Left":"Right →"}
@@ -489,17 +484,11 @@ export default function SmallBannerEditor() {
                   </div>
                 )}
 
-                {/* Background color */}
                 <SLabel>Background color</SLabel>
                 <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:12}}>
                   {COLOR_PRESETS.map(c=>(
                     <div key={c.hex} onClick={()=>setBgColor(c.hex)} title={c.label}
-                      style={{
-                        width:26,height:26,borderRadius:"50%",background:c.hex,cursor:"pointer",
-                        border:`3px solid ${bgColor===c.hex?"#18181b":"transparent"}`,
-                        outline:bgColor===c.hex?`2px solid ${c.hex}`:"none",
-                        outlineOffset:2,transition:"all 0.15s",boxShadow:"0 2px 5px #0002",
-                      }}/>
+                      style={{width:26,height:26,borderRadius:"50%",background:c.hex,cursor:"pointer",border:`3px solid ${bgColor===c.hex?"#18181b":"transparent"}`,outline:bgColor===c.hex?`2px solid ${c.hex}`:"none",outlineOffset:2,transition:"all 0.15s",boxShadow:"0 2px 5px #0002"}}/>
                   ))}
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>

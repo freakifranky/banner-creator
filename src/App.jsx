@@ -70,48 +70,97 @@ const MAISON_NEUE_CSS = `
    EXPORT — SMALL BANNER
 ═══════════════════════════════════════════════════════════════ */
 async function exportSmallBanner({title,subtitle,subtitleMode,discountValue,discountLang,showSubtitle,productImages,bgColor,bgImage,bgMode,bannerStyle,titleColor,subtitleColor,textOffsetX,textOffsetY}){
-  const W=361,PILL_H=90,R=16;
+  const PILL_W=361,PILL_H=90,R=16;
   const isFloating=bannerStyle==="floating";
 
-  // Floating: export is 361×150 — bottom 90px is the pill, top 60px is transparent headroom.
-  // This lets product images genuinely pop above the pill boundary.
-  // Blocked: export is exactly 361×90, pill fills entire canvas.
-  const HEADROOM=isFloating?60:0;
-  const CH=PILL_H+HEADROOM;
-  const PILL_TOP=HEADROOM; // pill starts this many px from top of canvas
+  if(!isFloating){
+    // Blocked: always exactly 361×90, images clipped to pill
+    const canvas=document.createElement("canvas");
+    canvas.width=PILL_W;canvas.height=PILL_H;
+    const ctx=canvas.getContext("2d");
+    ctx.save();roundRectPath(ctx,0,0,PILL_W,PILL_H,R);ctx.clip();
+    if(bgMode==="image"&&bgImage){try{const bi=await loadImg(bgImage);ctx.drawImage(bi,0,0,PILL_W,PILL_H);}catch{ctx.fillStyle=bgColor;ctx.fillRect(0,0,PILL_W,PILL_H);}}
+    else{const g=ctx.createLinearGradient(0,0,PILL_W,PILL_H);g.addColorStop(0,bgColor);g.addColorStop(1,darken(bgColor,30));ctx.fillStyle=g;ctx.fillRect(0,0,PILL_W,PILL_H);}
+    const sh=ctx.createLinearGradient(0,0,0,PILL_H*.5);sh.addColorStop(0,"rgba(255,255,255,.11)");sh.addColorStop(1,"rgba(255,255,255,0)");ctx.fillStyle=sh;ctx.fillRect(0,0,PILL_W,PILL_H*.5);
+    ctx.restore();
+    const textX=16+(textOffsetX||0),textY=PILL_H/2+(textOffsetY||0);
+    ctx.save();ctx.fillStyle=titleColor||"#fff";ctx.font=`800 15px 'MaisonNeueExt',sans-serif`;ctx.textBaseline="middle";
+    const lines=(title||"Judul banner kamu").split("\n");const lh=15*1.1;let ty=textY-(showSubtitle?8:0)-lines.length*lh/2+lh/2;
+    lines.forEach(l=>{ctx.fillText(l,textX,ty,PILL_W*.55);ty+=lh;});
+    if(showSubtitle){ctx.fillStyle=subtitleColor||"#fff";if(subtitleMode==="discount"){ctx.font=`700 10px 'MaisonNeueExt',sans-serif`;ctx.globalAlpha=.9;const label=discountLang==="id"?"Diskon s.d. ":"Discount up to ";const labelW=ctx.measureText(label).width;ctx.fillText(label,textX,ty+2);ctx.globalAlpha=1;ctx.font=`800 14px 'MaisonNeueExt',sans-serif`;ctx.fillText(discountValue+"%",textX+labelW,ty+2);}else{ctx.font=`700 10px 'MaisonNeueExt',sans-serif`;ctx.globalAlpha=.88;ctx.fillText(subtitle,textX,ty+2,PILL_W*.55);ctx.globalAlpha=1;}}
+    ctx.restore();
+    const blob=await new Promise(r=>canvas.toBlob(r,"image/png"));const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="small-banner.png";a.click();URL.revokeObjectURL(url);
+    return;
+  }
+
+  // FLOATING MODE:
+  // Step 1: Pre-load all images and compute their rotated bounding boxes
+  // so we know exactly how much to expand the canvas in each direction.
+  const loaded=[];
+  for(const pi of(productImages||[])){
+    try{
+      const img=await loadImg(pi.src);
+      const iw=(pi.natW||img.naturalWidth)*pi.scale;
+      const ih=(pi.natH||img.naturalHeight)*pi.scale;
+      // Compute axis-aligned bounding box of the rotated image centered at (pi.x, PILL_TOP+pi.y)
+      // We'll compute PILL_TOP later after we know expansion, so use pi.y for now (pill-relative)
+      const rad=(pi.rotation||0)*Math.PI/180;
+      const cos=Math.abs(Math.cos(rad)),sin=Math.abs(Math.sin(rad));
+      const bw=iw*cos+ih*sin; // rotated bounding width
+      const bh=iw*sin+ih*cos; // rotated bounding height
+      loaded.push({pi,img,iw,ih,bw,bh});
+    }catch{}
+  }
+
+  // Step 2: Compute how much extra space is needed beyond the pill in each direction.
+  // pi.y is pill-relative: negative = above, >PILL_H = below, pi.x can be <0 or >PILL_W
+  let extraTop=0,extraBottom=0,extraLeft=0,extraRight=0;
+  for(const {pi,bw,bh} of loaded){
+    const cx=pi.x;           // center x, pill-relative horizontally
+    const cy=pi.y;           // center y, pill-relative vertically (0=pill top)
+    const top=cy-bh/2;       // top edge of image, pill-relative
+    const bottom=cy+bh/2;    // bottom edge
+    const left=cx-bw/2;      // left edge
+    const right=cx+bw/2;     // right edge
+    if(top<0)         extraTop   =Math.max(extraTop,   Math.ceil(-top));
+    if(bottom>PILL_H) extraBottom=Math.max(extraBottom,Math.ceil(bottom-PILL_H));
+    if(left<0)        extraLeft  =Math.max(extraLeft,  Math.ceil(-left));
+    if(right>PILL_W)  extraRight =Math.max(extraRight, Math.ceil(right-PILL_W));
+  }
+
+  // Pill origin in canvas coords
+  const PILL_X=extraLeft;
+  const PILL_TOP=extraTop;
+  const CW=PILL_W+extraLeft+extraRight;
+  const CH=PILL_H+extraTop+extraBottom;
 
   const canvas=document.createElement("canvas");
-  canvas.width=W; canvas.height=CH;
+  canvas.width=CW;canvas.height=CH;
   const ctx=canvas.getContext("2d");
-  // canvas is transparent by default — headroom stays transparent
 
-  // Step 1: Draw pill clipped to its rounded rect
+  // Step 3: Draw pill at (PILL_X, PILL_TOP)
   ctx.save();
-  roundRectPath(ctx,0,PILL_TOP,W,PILL_H,R); ctx.clip();
+  roundRectPath(ctx,PILL_X,PILL_TOP,PILL_W,PILL_H,R);ctx.clip();
   if(bgMode==="image"&&bgImage){
-    try{const bi=await loadImg(bgImage);ctx.drawImage(bi,0,PILL_TOP,W,PILL_H);}
-    catch{ctx.fillStyle=bgColor;ctx.fillRect(0,PILL_TOP,W,PILL_H);}
+    try{const bi=await loadImg(bgImage);ctx.drawImage(bi,PILL_X,PILL_TOP,PILL_W,PILL_H);}
+    catch{ctx.fillStyle=bgColor;ctx.fillRect(PILL_X,PILL_TOP,PILL_W,PILL_H);}
   } else {
-    const g=ctx.createLinearGradient(0,PILL_TOP,W,PILL_TOP+PILL_H);
+    const g=ctx.createLinearGradient(PILL_X,PILL_TOP,PILL_X+PILL_W,PILL_TOP+PILL_H);
     g.addColorStop(0,bgColor);g.addColorStop(1,darken(bgColor,30));
-    ctx.fillStyle=g;ctx.fillRect(0,PILL_TOP,W,PILL_H);
+    ctx.fillStyle=g;ctx.fillRect(PILL_X,PILL_TOP,PILL_W,PILL_H);
   }
   const sh=ctx.createLinearGradient(0,PILL_TOP,0,PILL_TOP+PILL_H*.5);
   sh.addColorStop(0,"rgba(255,255,255,.11)");sh.addColorStop(1,"rgba(255,255,255,0)");
-  ctx.fillStyle=sh;ctx.fillRect(0,PILL_TOP,W,PILL_H*.5);
+  ctx.fillStyle=sh;ctx.fillRect(PILL_X,PILL_TOP,PILL_W,PILL_H*.5);
   ctx.restore();
 
-  // Step 2: Draw text inside the pill
-  const textX=16+(textOffsetX||0);
+  // Step 4: Draw text inside pill
+  const textX=PILL_X+16+(textOffsetX||0);
   const textY=PILL_TOP+PILL_H/2+(textOffsetY||0);
-  ctx.save();
-  ctx.fillStyle=titleColor||"#fff";
-  ctx.font=`800 15px 'MaisonNeueExt',sans-serif`;
-  ctx.textBaseline="middle";
-  const lines=(title||"Judul banner kamu").split("\n");
-  const lh=15*1.1;
+  ctx.save();ctx.fillStyle=titleColor||"#fff";ctx.font=`800 15px 'MaisonNeueExt',sans-serif`;ctx.textBaseline="middle";
+  const lines=(title||"Judul banner kamu").split("\n");const lh=15*1.1;
   let ty=textY-(showSubtitle?8:0)-lines.length*lh/2+lh/2;
-  lines.forEach(l=>{ctx.fillText(l,textX,ty,W*.55);ty+=lh;});
+  lines.forEach(l=>{ctx.fillText(l,textX,ty,PILL_W*.55);ty+=lh;});
   if(showSubtitle){
     ctx.fillStyle=subtitleColor||"#fff";
     if(subtitleMode==="discount"){
@@ -123,24 +172,18 @@ async function exportSmallBanner({title,subtitle,subtitleMode,discountValue,disc
       ctx.fillText(discountValue+"%",textX+labelW,ty+2);
     } else {
       ctx.font=`700 10px 'MaisonNeueExt',sans-serif`;ctx.globalAlpha=.88;
-      ctx.fillText(subtitle,textX,ty+2,W*.55);ctx.globalAlpha=1;
+      ctx.fillText(subtitle,textX,ty+2,PILL_W*.55);ctx.globalAlpha=1;
     }
   }
   ctx.restore();
 
-  // Step 3: Product image coords are relative to pill top (pi.y=0 = pill top, negative = above).
-  // Add PILL_TOP to translate into canvas coords.
-  for(const pi of(productImages||[])){
-    try{
-      const img=await loadImg(pi.src);
-      const iw=(pi.natW||img.naturalWidth)*pi.scale;
-      const ih=(pi.natH||img.naturalHeight)*pi.scale;
-      ctx.save();
-      ctx.translate(pi.x, PILL_TOP + pi.y);
-      ctx.rotate((pi.rotation||0)*Math.PI/180);
-      ctx.drawImage(img,-iw/2,-ih/2,iw,ih);
-      ctx.restore();
-    }catch{}
+  // Step 5: Draw product images at their canvas coords (PILL_X+pi.x, PILL_TOP+pi.y)
+  for(const {pi,img,iw,ih} of loaded){
+    ctx.save();
+    ctx.translate(PILL_X+pi.x, PILL_TOP+pi.y);
+    ctx.rotate((pi.rotation||0)*Math.PI/180);
+    ctx.drawImage(img,-iw/2,-ih/2,iw,ih);
+    ctx.restore();
   }
 
   const blob=await new Promise(r=>canvas.toBlob(r,"image/png"));
@@ -204,13 +247,32 @@ function SmallBannerPreview({title,subtitle,subtitleMode,discountValue,discountL
   const useBg=bgMode==="image"&&bgImage;
   const gradient=useBg?"none":`linear-gradient(108deg,${bgColor} 0%,${darken(bgColor,30)} 100%)`;
   const isFloating=bannerStyle==="floating";
-  const HEADROOM=isFloating?60:0; // real px (not scaled) of transparent space above pill
-  const totalH=(SBH+HEADROOM)*SB_SCALE;
+
+  // Compute dynamic expansion from product images (same logic as export)
+  let extraTop=0,extraBottom=0,extraLeft=0,extraRight=0;
+  if(isFloating){
+    for(const pi of(productImages||[])){
+      const iw=(pi.natW||100)*pi.scale,ih=(pi.natH||100)*pi.scale;
+      const rad=(pi.rotation||0)*Math.PI/180;
+      const cos=Math.abs(Math.cos(rad)),sin=Math.abs(Math.sin(rad));
+      const bw=iw*cos+ih*sin,bh=iw*sin+ih*cos;
+      const top=pi.y-bh/2,bottom=pi.y+bh/2,left=pi.x-bw/2,right=pi.x+bw/2;
+      if(top<0)         extraTop   =Math.max(extraTop,   Math.ceil(-top));
+      if(bottom>SBH)    extraBottom=Math.max(extraBottom,Math.ceil(bottom-SBH));
+      if(left<0)        extraLeft  =Math.max(extraLeft,  Math.ceil(-left));
+      if(right>SBW)     extraRight =Math.max(extraRight, Math.ceil(right-SBW));
+    }
+  }
+
+  const pillOffsetX=extraLeft*SB_SCALE;
+  const pillOffsetY=extraTop*SB_SCALE;
+  const totalW=(SBW+extraLeft+extraRight)*SB_SCALE;
+  const totalH=(SBH+extraTop+extraBottom)*SB_SCALE;
+
   return(
-    // Container height includes headroom. No overflow:hidden — images spill above freely.
-    <div style={{width:SBW*SB_SCALE,height:totalH,position:"relative",flexShrink:0}}>
-      {/* Pill sits at the bottom */}
-      <div style={{position:"absolute",bottom:0,left:0,width:SBW*SB_SCALE,height:SBH*SB_SCALE,borderRadius:SBR*SB_SCALE,overflow:"hidden",background:gradient,boxShadow:"0 4px 20px rgba(0,0,0,.18)"}}>
+    <div style={{width:totalW,height:totalH,position:"relative",flexShrink:0}}>
+      {/* Pill positioned at (pillOffsetX, pillOffsetY) */}
+      <div style={{position:"absolute",left:pillOffsetX,top:pillOffsetY,width:SBW*SB_SCALE,height:SBH*SB_SCALE,borderRadius:SBR*SB_SCALE,overflow:"hidden",background:gradient,boxShadow:"0 4px 20px rgba(0,0,0,.18)"}}>
         {useBg&&<img src={bgImage} alt="bg" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",zIndex:0}}/>}
         <div style={{position:"absolute",top:0,left:0,right:0,height:"50%",background:"linear-gradient(180deg,rgba(255,255,255,.11) 0%,transparent 100%)",zIndex:1,borderRadius:`${SBR*SB_SCALE}px ${SBR*SB_SCALE}px 0 0`}}/>
         {(()=>{
@@ -238,14 +300,14 @@ function SmallBannerPreview({title,subtitle,subtitleMode,discountValue,discountL
           );
         })()}
       </div>
-      {/* Product images — Y is relative to pill top. Pill sits at bottom, so offset by HEADROOM */}
+      {/* Product images — coords are pill-relative, offset by pill position in container */}
       {(productImages||[]).map((pi,i)=>(
         <img key={i} src={pi.src} alt=""
           onMouseDown={e=>onMouseDownItem&&onMouseDownItem(e,`product-${i}`)}
           style={{
             position:"absolute",
-            left:pi.x*SB_SCALE,
-            top:(HEADROOM+pi.y)*SB_SCALE,
+            left:(extraLeft+pi.x)*SB_SCALE,
+            top:(extraTop+pi.y)*SB_SCALE,
             width:(pi.natW||100)*pi.scale*SB_SCALE,
             height:"auto",
             objectFit:"contain",
@@ -410,7 +472,7 @@ function SmallBannerEditor({onBack}){
           </div>
         </div>
       </div>
-      <StatusBar label={`True output: 361 × ${bannerStyle==="floating"?150:90} px · Previewed at 2×`}/>
+      <StatusBar label={`True output: 361 × ${bannerStyle==="floating"?"auto (expands to fit images)":"90"} px · Previewed at 2×`}/>
     </div>
   );
 }

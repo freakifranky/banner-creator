@@ -767,7 +767,7 @@ function BannerSelect({onSelect}){
       preview:<div style={{width:"85%",height:40,background:"linear-gradient(135deg,#6366f1,#8b5cf6,#ec4899)",borderRadius:5,margin:"0 auto 14px",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{color:"#fff",fontSize:11,fontWeight:700,letterSpacing:".08em"}}>✦ CUSTOM</span></div>},
   ];
   return(
-    <div style={{minHeight:"100vh",background:"#f5f5f5",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"'Inter','Segoe UI',sans-serif"}}>
+    <div style={{width:"100vw",minHeight:"100vh",background:"#f5f5f5",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"'Inter','Segoe UI',sans-serif",boxSizing:"border-box"}}>
       <div style={{marginBottom:36,textAlign:"center"}}>
         <div style={{fontSize:26,fontWeight:700,color:"#111",letterSpacing:"-.02em"}}>Banner Creator</div>
         <div style={{fontSize:14,color:"#999",marginTop:6}}>Select a banner type to begin</div>

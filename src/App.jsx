@@ -70,35 +70,40 @@ const MAISON_NEUE_CSS = `
    EXPORT — SMALL BANNER
 ═══════════════════════════════════════════════════════════════ */
 async function exportSmallBanner({title,subtitle,subtitleMode,discountValue,discountLang,showSubtitle,productImages,bgColor,bgImage,bgMode,bannerStyle,titleColor,subtitleColor,textOffsetX,textOffsetY}){
-  const W=361,H=90,R=16;
+  const W=361,PILL_H=90,R=16;
   const isFloating=bannerStyle==="floating";
 
-  // Always 361x90. For floating: pill is clipped, images drawn AFTER restore so they paint
-  // over the pill edges freely — creating the pop-out illusion within the same dimensions.
+  // Floating: export is 361×150 — bottom 90px is the pill, top 60px is transparent headroom.
+  // This lets product images genuinely pop above the pill boundary.
+  // Blocked: export is exactly 361×90, pill fills entire canvas.
+  const HEADROOM=isFloating?60:0;
+  const CH=PILL_H+HEADROOM;
+  const PILL_TOP=HEADROOM; // pill starts this many px from top of canvas
+
   const canvas=document.createElement("canvas");
-  canvas.width=W;canvas.height=H;
+  canvas.width=W; canvas.height=CH;
   const ctx=canvas.getContext("2d");
+  // canvas is transparent by default — headroom stays transparent
 
-  // Step 1: Draw pill background with rounded clip
+  // Step 1: Draw pill clipped to its rounded rect
   ctx.save();
-  roundRectPath(ctx,0,0,W,H,R);ctx.clip();
+  roundRectPath(ctx,0,PILL_TOP,W,PILL_H,R); ctx.clip();
   if(bgMode==="image"&&bgImage){
-    try{const bi=await loadImg(bgImage);ctx.drawImage(bi,0,0,W,H);}
-    catch{ctx.fillStyle=bgColor;ctx.fillRect(0,0,W,H);}
+    try{const bi=await loadImg(bgImage);ctx.drawImage(bi,0,PILL_TOP,W,PILL_H);}
+    catch{ctx.fillStyle=bgColor;ctx.fillRect(0,PILL_TOP,W,PILL_H);}
   } else {
-    const g=ctx.createLinearGradient(0,0,W,H);
+    const g=ctx.createLinearGradient(0,PILL_TOP,W,PILL_TOP+PILL_H);
     g.addColorStop(0,bgColor);g.addColorStop(1,darken(bgColor,30));
-    ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+    ctx.fillStyle=g;ctx.fillRect(0,PILL_TOP,W,PILL_H);
   }
-  const sh=ctx.createLinearGradient(0,0,0,H*.5);
+  const sh=ctx.createLinearGradient(0,PILL_TOP,0,PILL_TOP+PILL_H*.5);
   sh.addColorStop(0,"rgba(255,255,255,.11)");sh.addColorStop(1,"rgba(255,255,255,0)");
-  ctx.fillStyle=sh;ctx.fillRect(0,0,W,H*.5);
-  ctx.restore(); // clip released here
+  ctx.fillStyle=sh;ctx.fillRect(0,PILL_TOP,W,PILL_H*.5);
+  ctx.restore();
 
-  // Step 2: Draw text (no clip active, text stays within pill visually)
-  const ta=textOffsetX!==undefined?(textOffsetX===0&&textOffsetY===0?"left":"left"):"left";
+  // Step 2: Draw text inside the pill
   const textX=16+(textOffsetX||0);
-  const textY=H/2+(textOffsetY||0);
+  const textY=PILL_TOP+PILL_H/2+(textOffsetY||0);
   ctx.save();
   ctx.fillStyle=titleColor||"#fff";
   ctx.font=`800 15px 'MaisonNeueExt',sans-serif`;
@@ -123,14 +128,15 @@ async function exportSmallBanner({title,subtitle,subtitleMode,discountValue,disc
   }
   ctx.restore();
 
-  // Step 3: Draw product images — no clip active so they paint over pill edges (floating illusion)
+  // Step 3: Draw product images — coordinates are relative to full canvas height.
+  // In floating mode, PILL_TOP=60 so a product image at y=30 sits 30px above the pill top.
   for(const pi of(productImages||[])){
     try{
       const img=await loadImg(pi.src);
       const iw=(pi.natW||img.naturalWidth)*pi.scale;
       const ih=(pi.natH||img.naturalHeight)*pi.scale;
       ctx.save();
-      ctx.translate(pi.x,pi.y);
+      ctx.translate(pi.x, pi.y);
       ctx.rotate((pi.rotation||0)*Math.PI/180);
       ctx.drawImage(img,-iw/2,-ih/2,iw,ih);
       ctx.restore();
@@ -198,11 +204,13 @@ function SmallBannerPreview({title,subtitle,subtitleMode,discountValue,discountL
   const useBg=bgMode==="image"&&bgImage;
   const gradient=useBg?"none":`linear-gradient(108deg,${bgColor} 0%,${darken(bgColor,30)} 100%)`;
   const isFloating=bannerStyle==="floating";
+  const HEADROOM=isFloating?60:0; // real px (not scaled) of transparent space above pill
+  const totalH=(SBH+HEADROOM)*SB_SCALE;
   return(
-    // Always 361x90 at display scale. overflow:visible so floating images spill out.
-    <div style={{width:SBW*SB_SCALE,height:SBH*SB_SCALE,position:"relative",flexShrink:0,overflow:isFloating?"visible":"hidden"}}>
-      {/* Pill fills the full container */}
-      <div style={{position:"absolute",inset:0,borderRadius:SBR*SB_SCALE,overflow:"hidden",background:gradient,boxShadow:"0 4px 20px rgba(0,0,0,.18)"}}>
+    // Container height includes headroom. No overflow:hidden — images spill above freely.
+    <div style={{width:SBW*SB_SCALE,height:totalH,position:"relative",flexShrink:0}}>
+      {/* Pill sits at the bottom */}
+      <div style={{position:"absolute",bottom:0,left:0,width:SBW*SB_SCALE,height:SBH*SB_SCALE,borderRadius:SBR*SB_SCALE,overflow:"hidden",background:gradient,boxShadow:"0 4px 20px rgba(0,0,0,.18)"}}>
         {useBg&&<img src={bgImage} alt="bg" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",zIndex:0}}/>}
         <div style={{position:"absolute",top:0,left:0,right:0,height:"50%",background:"linear-gradient(180deg,rgba(255,255,255,.11) 0%,transparent 100%)",zIndex:1,borderRadius:`${SBR*SB_SCALE}px ${SBR*SB_SCALE}px 0 0`}}/>
         {(()=>{
@@ -230,7 +238,7 @@ function SmallBannerPreview({title,subtitle,subtitleMode,discountValue,discountL
           );
         })()}
       </div>
-      {/* Product images — overflow pill edges in floating mode */}
+      {/* Product images — top:pi.y*SB_SCALE is relative to full container top, matching export coords */}
       {(productImages||[]).map((pi,i)=>(
         <img key={i} src={pi.src} alt=""
           onMouseDown={e=>onMouseDownItem&&onMouseDownItem(e,`product-${i}`)}
@@ -300,9 +308,10 @@ function SmallBannerEditor({onBack}){
   const fileRef=useRef(),bgRef=useRef();
   const dragTarget=useRef(null),dragStart=useRef({});
 
-  const addFiles=e=>{Array.from(e.target.files).forEach(f=>{const r=new FileReader();r.onload=ev=>{const img=new Image();img.onload=()=>setProductImages(p=>[...p,{src:ev.target.result,name:f.name,x:SBW*.72,y:SBH*.3,scale:.6,rotation:0,natW:img.naturalWidth,natH:img.naturalHeight}]);img.src=ev.target.result;};r.readAsDataURL(f);});e.target.value="";};
+  const HEADROOM=bannerStyle==="floating"?60:0;
+  const addFiles=e=>{Array.from(e.target.files).forEach(f=>{const r=new FileReader();r.onload=ev=>{const img=new Image();img.onload=()=>setProductImages(p=>[...p,{src:ev.target.result,name:f.name,x:SBW*.72,y:HEADROOM+(SBH*.3),scale:.6,rotation:0,natW:img.naturalWidth,natH:img.naturalHeight}]);img.src=ev.target.result;};r.readAsDataURL(f);});e.target.value="";};
   const addBg=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>setBgImage(ev.target.result);r.readAsDataURL(f);e.target.value="";};
-  const addUrl=()=>{if(!urlInput.trim())return;const img=new Image();img.crossOrigin="anonymous";img.onload=()=>setProductImages(p=>[...p,{src:urlInput.trim(),name:"URL image",x:SBW*.7,y:SBH/2,scale:.6,rotation:0,natW:img.naturalWidth,natH:img.naturalHeight}]);img.src=urlInput.trim();setUrlInput("");};
+  const addUrl=()=>{if(!urlInput.trim())return;const img=new Image();img.crossOrigin="anonymous";img.onload=()=>setProductImages(p=>[...p,{src:urlInput.trim(),name:"URL image",x:SBW*.72,y:HEADROOM+(SBH*.3),scale:.6,rotation:0,natW:img.naturalWidth,natH:img.naturalHeight}]);img.src=urlInput.trim();setUrlInput("");};
   const updateProd=(i,patch)=>setProductImages(p=>p.map((h,j)=>j===i?{...h,...patch}:h));
   const removeProd=i=>setProductImages(p=>p.filter((_,j)=>j!==i));
 
@@ -401,7 +410,7 @@ function SmallBannerEditor({onBack}){
           </div>
         </div>
       </div>
-      <StatusBar label="True output: 361 × 90 px · Previewed at 2×"/>
+      <StatusBar label={`True output: 361 × ${bannerStyle==="floating"?150:90} px · Previewed at 2×`}/>
     </div>
   );
 }

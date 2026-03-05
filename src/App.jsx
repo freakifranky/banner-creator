@@ -69,28 +69,71 @@ const MAISON_NEUE_CSS = `
 /* ═══════════════════════════════════════════════════════════════
    EXPORT — SMALL BANNER
 ═══════════════════════════════════════════════════════════════ */
-async function exportSmallBanner({title,subtitle,subtitleMode,discountValue,discountLang,showSubtitle,productImages,bgColor,bgImage,bgMode,bannerStyle,titleColor,subtitleColor}){
+async function exportSmallBanner({title,subtitle,subtitleMode,discountValue,discountLang,showSubtitle,productImages,bgColor,bgImage,bgMode,bannerStyle,titleColor,subtitleColor,textOffsetX,textOffsetY}){
   const W=361,H=90,R=16;
+  // For floating: canvas is exactly 361x90 with transparent BG.
+  // Product images are drawn outside the pill clip so they float above/beyond.
   const canvas=document.createElement("canvas");canvas.width=W;canvas.height=H;
   const ctx=canvas.getContext("2d");
-  ctx.save();roundRectPath(ctx,0,0,W,H,R);ctx.clip();
+
+  // Step 1: Draw pill BG with clip
+  ctx.save();
+  roundRectPath(ctx,0,0,W,H,R);ctx.clip();
   if(bgMode==="image"&&bgImage){try{const bi=await loadImg(bgImage);ctx.drawImage(bi,0,0,W,H);}catch{ctx.fillStyle=bgColor;ctx.fillRect(0,0,W,H);}}
   else{const g=ctx.createLinearGradient(0,0,W,H);g.addColorStop(0,bgColor);g.addColorStop(1,darken(bgColor,30));ctx.fillStyle=g;ctx.fillRect(0,0,W,H);}
   const sh=ctx.createLinearGradient(0,0,0,H*.5);sh.addColorStop(0,"rgba(255,255,255,.11)");sh.addColorStop(1,"rgba(255,255,255,0)");ctx.fillStyle=sh;ctx.fillRect(0,0,W,H*.5);
   ctx.restore();
-  ctx.save();ctx.fillStyle=titleColor||"#fff";ctx.font=`800 15px 'MaisonNeueExt',sans-serif`;ctx.textBaseline="middle";
-  const lines=(title||"Judul banner kamu").split("\n");const lh=15*1.1;let ty=H/2-(showSubtitle?8:0)-lines.length*lh/2+lh/2;
-  lines.forEach(l=>{ctx.fillText(l,16,ty,W*.55);ty+=lh;});
-  if(showSubtitle){ctx.fillStyle=subtitleColor||"#fff";if(subtitleMode==="discount"){ctx.font=`700 10px 'MaisonNeueExt',sans-serif`;ctx.globalAlpha=.9;ctx.fillText(discountLang==="id"?"Diskon s.d.":"Discount up to",16,ty+2,W*.55);ctx.globalAlpha=1;ctx.font=`800 14px 'MaisonNeueExt',sans-serif`;ctx.fillText(discountValue+"%",16,ty+14,W*.55);}else{ctx.font=`700 10px 'MaisonNeueExt',sans-serif`;ctx.globalAlpha=.88;ctx.fillText(subtitle,16,ty+2,W*.55);ctx.globalAlpha=1;}}
+
+  // Step 2: Draw text (inside pill visually, no clip needed)
+  const textX=16+(textOffsetX||0);
+  const textY=H/2+(textOffsetY||0);
+  ctx.save();
+  ctx.fillStyle=titleColor||"#fff";
+  ctx.font=`800 15px 'MaisonNeueExt',sans-serif`;
+  ctx.textBaseline="middle";
+  const lines=(title||"Judul banner kamu").split("\n");
+  const lh=15*1.1;
+  let ty=textY-(showSubtitle?8:0)-lines.length*lh/2+lh/2;
+  lines.forEach(l=>{ctx.fillText(l,textX,ty,W*.55);ty+=lh;});
+  if(showSubtitle){
+    ctx.fillStyle=subtitleColor||"#fff";
+    if(subtitleMode==="discount"){
+      ctx.font=`700 10px 'MaisonNeueExt',sans-serif`;ctx.globalAlpha=.9;
+      const label=discountLang==="id"?"Diskon s.d. ":"Discount up to ";
+      const labelW=ctx.measureText(label).width;
+      ctx.fillText(label,textX,ty+2);
+      ctx.globalAlpha=1;ctx.font=`800 14px 'MaisonNeueExt',sans-serif`;
+      ctx.fillText(discountValue+"%",textX+labelW,ty+2);
+    } else {
+      ctx.font=`700 10px 'MaisonNeueExt',sans-serif`;ctx.globalAlpha=.88;
+      ctx.fillText(subtitle,textX,ty+2,W*.55);ctx.globalAlpha=1;
+    }
+  }
   ctx.restore();
-  for(const pi of(productImages||[])){try{const img=await loadImg(pi.src);const iw=(pi.natW||img.naturalWidth)*pi.scale;const ih=(pi.natH||img.naturalHeight)*pi.scale;ctx.drawImage(img,pi.x-iw/2,pi.y-ih/2,iw,ih);}catch{}}
-  const blob=await new Promise(r=>canvas.toBlob(r,"image/png"));const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="small-banner.png";a.click();URL.revokeObjectURL(url);
+
+  // Step 3: Draw product images WITHOUT clip — floating style lets them overflow
+  for(const pi of(productImages||[])){
+    try{
+      const img=await loadImg(pi.src);
+      const iw=(pi.natW||img.naturalWidth)*pi.scale;
+      const ih=(pi.natH||img.naturalHeight)*pi.scale;
+      ctx.save();
+      ctx.translate(pi.x,pi.y);
+      ctx.rotate((pi.rotation||0)*Math.PI/180);
+      ctx.drawImage(img,-iw/2,-ih/2,iw,ih);
+      ctx.restore();
+    }catch{}
+  }
+
+  const blob=await new Promise(r=>canvas.toBlob(r,"image/png"));
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");a.href=url;a.download="small-banner.png";a.click();URL.revokeObjectURL(url);
 }
 
 /* ═══════════════════════════════════════════════════════════════
    EXPORT — BIG BANNER
 ═══════════════════════════════════════════════════════════════ */
-async function exportBigBanner({title,titleColor,subtitle,subtitleColor,showSubtitle,logo,logoScale,logoX,logoY,heroImages,bgColor,bgImage,bgMode,textAlign}){
+async function exportBigBanner({title,titleColor,subtitle,subtitleColor,showSubtitle,logo,logoScale,logoX,logoY,heroImages,bgColor,bgImage,bgMode,textAlign,textOffsetX,textOffsetY}){
   const W=360,H=250,R=16;
   const canvas=document.createElement("canvas");canvas.width=W;canvas.height=H;
   const ctx=canvas.getContext("2d");
@@ -102,9 +145,9 @@ async function exportBigBanner({title,titleColor,subtitle,subtitleColor,showSubt
   if(logo){try{const li=await loadImg(logo);const lh=26*logoScale;const lw=lh*(li.naturalWidth/li.naturalHeight);ctx.drawImage(li,logoX,logoY,lw,lh);}catch{}}
   ctx.restore();
   ctx.save();ctx.fillStyle=titleColor||"#fff";ctx.font=`800 13.5px 'MaisonNeueExt',sans-serif`;ctx.textBaseline="alphabetic";
-  const ta=textAlign==="center"?"center":textAlign==="right"?"right":"left";const tx=ta==="right"?W-20:ta==="center"?W/2:20;
+  const ta=textAlign==="center"?"center":textAlign==="right"?"right":"left";const tox2=textOffsetX||0,toy2=textOffsetY||0;const tx=ta==="right"?W-20+tox2:ta==="center"?W/2+tox2:20+tox2;
   ctx.textAlign=ta;
-  const ls=(title||"").split("\n").filter(Boolean);const lh2=13.5*1.2;let ty2=H-20-(ls.length-1)*lh2-(showSubtitle&&subtitle?18:0);
+  const ls=(title||"").split("\n").filter(Boolean);const lh2=13.5*1.2;let ty2=H-20-toy2-(ls.length-1)*lh2-(showSubtitle&&subtitle?18:0);
   ls.forEach(l=>{ctx.fillText(l,tx,ty2,W*.58);ty2+=lh2;});
   if(showSubtitle&&subtitle){ctx.fillStyle=subtitleColor||"rgba(255,255,255,.88)";ctx.font=`600 12px 'MaisonNeueExt',sans-serif`;ctx.fillText(subtitle,tx,ty2+4,W*.58);}
   ctx.restore();
@@ -137,7 +180,7 @@ async function exportCustomBanner({canvasW,canvasH,bgMode,bgColor,bgColor2,bgIma
 ═══════════════════════════════════════════════════════════════ */
 const SBW=361,SBH=90,SBR=16,SB_SCALE=2;
 
-function SmallBannerPreview({title,subtitle,subtitleMode,discountValue,discountLang,showSubtitle,productImages,bgColor,bgImage,bgMode,bannerStyle,titleColor,subtitleColor,onMouseDownItem}){
+function SmallBannerPreview({title,subtitle,subtitleMode,discountValue,discountLang,showSubtitle,productImages,bgColor,bgImage,bgMode,bannerStyle,titleColor,subtitleColor,onMouseDownItem,textAlign,textOffsetX,textOffsetY}){
   const useBg=bgMode==="image"&&bgImage;
   const gradient=useBg?"none":`linear-gradient(108deg,${bgColor} 0%,${darken(bgColor,30)} 100%)`;
   const OVERFLOW=bannerStyle==="floating"?55:0;
@@ -146,10 +189,22 @@ function SmallBannerPreview({title,subtitle,subtitleMode,discountValue,discountL
       <div style={{position:"absolute",bottom:0,left:0,width:SBW*SB_SCALE,height:SBH*SB_SCALE,borderRadius:SBR*SB_SCALE,overflow:"hidden",background:gradient,boxShadow:"0 4px 20px rgba(0,0,0,.18)"}}>
         {useBg&&<img src={bgImage} alt="bg" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",zIndex:0}}/>}
         <div style={{position:"absolute",top:0,left:0,right:0,height:"50%",background:"linear-gradient(180deg,rgba(255,255,255,.11) 0%,transparent 100%)",zIndex:1,borderRadius:`${SBR*SB_SCALE}px ${SBR*SB_SCALE}px 0 0`}}/>
-        <div style={{position:"absolute",top:"50%",transform:"translateY(-50%)",left:16*SB_SCALE,right:0,zIndex:4}}>
-          <div style={{fontFamily:"'MaisonNeueExt',sans-serif",fontWeight:800,fontSize:15*SB_SCALE,lineHeight:1.05,color:titleColor||"#fff",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{title||"Judul banner kamu"}</div>
-          {showSubtitle&&<div style={{marginTop:2*SB_SCALE}}>{subtitleMode==="discount"?<><div style={{fontFamily:"'MaisonNeueExt',sans-serif",fontWeight:700,fontSize:10*SB_SCALE,lineHeight:1,color:subtitleColor||"#fff",opacity:.9}}>{discountLang==="id"?"Diskon s.d.":"Discount up to"}</div><div style={{fontFamily:"'MaisonNeueExt',sans-serif",fontWeight:800,fontSize:14*SB_SCALE,lineHeight:1,color:subtitleColor||"#fff"}}>{discountValue}%</div></>:<div style={{fontFamily:"'MaisonNeueExt',sans-serif",fontWeight:700,fontSize:10*SB_SCALE,lineHeight:1,color:subtitleColor||"#fff",opacity:.88}}>{subtitle}</div>}</div>}
-        </div>
+        {(()=>{
+          const aln=textAlign||"left";
+          const tox=(textOffsetX||0)*SB_SCALE;
+          const toy=(textOffsetY||0)*SB_SCALE;
+          const posStyle=aln==="center"
+            ?{left:"50%",transform:`translate(-50%,calc(-50% + ${toy}px))`,textAlign:"center",width:SBW*SB_SCALE*.7}
+            :aln==="right"
+            ?{right:16*SB_SCALE+tox,transform:`translateY(calc(-50% + ${toy}px))`,textAlign:"right",maxWidth:SBW*SB_SCALE*.7}
+            :{left:16*SB_SCALE+tox,transform:`translateY(calc(-50% + ${toy}px))`,textAlign:"left",maxWidth:SBW*SB_SCALE*.6};
+          return(
+            <div style={{position:"absolute",top:"50%",zIndex:4,...posStyle}}>
+              <div style={{fontFamily:"'MaisonNeueExt',sans-serif",fontWeight:800,fontSize:15*SB_SCALE,lineHeight:1.05,color:titleColor||"#fff",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{title||"Judul banner kamu"}</div>
+              {showSubtitle&&<div style={{marginTop:2*SB_SCALE}}>{subtitleMode==="discount"?<div style={{display:"flex",alignItems:"baseline",gap:4*SB_SCALE}}><span style={{fontFamily:"'MaisonNeueExt',sans-serif",fontWeight:700,fontSize:10*SB_SCALE,lineHeight:1,color:subtitleColor||"#fff",opacity:.9}}>{discountLang==="id"?"Diskon s.d.":"Discount up to"}</span><span style={{fontFamily:"'MaisonNeueExt',sans-serif",fontWeight:800,fontSize:14*SB_SCALE,lineHeight:1,color:subtitleColor||"#fff"}}>{discountValue}%</span></div>:<div style={{fontFamily:"'MaisonNeueExt',sans-serif",fontWeight:700,fontSize:10*SB_SCALE,lineHeight:1,color:subtitleColor||"#fff",opacity:.88}}>{subtitle}</div>}</div>}
+            </div>
+          );
+        })()}
       </div>
       {(productImages||[]).map((pi,i)=>(
         <img key={i} src={pi.src} alt=""
@@ -166,10 +221,11 @@ function SmallBannerPreview({title,subtitle,subtitleMode,discountValue,discountL
 ═══════════════════════════════════════════════════════════════ */
 const BBW=360,BBH=250,BBR=16,BB_SCALE=1.6;
 
-function BigBannerPreview({title,titleColor,subtitle,subtitleColor,showSubtitle,logo,logoScale,logoX,logoY,heroImages,bgColor,bgImage,bgMode,textAlign,onMouseDownItem}){
+function BigBannerPreview({title,titleColor,subtitle,subtitleColor,showSubtitle,logo,logoScale,logoX,logoY,heroImages,bgColor,bgImage,bgMode,textAlign,textOffsetX,textOffsetY,onMouseDownItem}){
   const useBg=bgMode==="image"&&bgImage;
   const gradient=useBg?"none":`linear-gradient(135deg,${bgColor} 0%,${darken(bgColor,35)} 100%)`;
-  const textPos=textAlign==="left"?{left:20*BB_SCALE,textAlign:"left",maxWidth:BBW*.58*BB_SCALE}:textAlign==="right"?{right:20*BB_SCALE,textAlign:"right",maxWidth:BBW*.58*BB_SCALE}:{left:"50%",transform:"translateX(-50%)",textAlign:"center",width:BBW*.7*BB_SCALE};
+  const tox=(textOffsetX||0)*BB_SCALE,toy=(textOffsetY||0)*BB_SCALE;
+  const textPos=textAlign==="left"?{left:20*BB_SCALE+tox,textAlign:"left",maxWidth:BBW*.58*BB_SCALE}:textAlign==="right"?{right:20*BB_SCALE-tox,textAlign:"right",maxWidth:BBW*.58*BB_SCALE}:{left:`calc(50% + ${tox}px)`,transform:"translateX(-50%)",textAlign:"center",width:BBW*.7*BB_SCALE};
   return(
     <div style={{width:BBW*BB_SCALE,height:BBH*BB_SCALE,position:"relative",borderRadius:BBR*BB_SCALE,overflow:"hidden",background:gradient,boxShadow:"0 6px 32px rgba(0,0,0,.22)",flexShrink:0}}>
       {useBg&&<img src={bgImage} alt="bg" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",zIndex:0}}/>}
@@ -180,7 +236,7 @@ function BigBannerPreview({title,titleColor,subtitle,subtitleColor,showSubtitle,
       ))}
       {logo&&<img src={logo} alt="logo" onMouseDown={e=>onMouseDownItem&&onMouseDownItem(e,"logo")}
         style={{position:"absolute",left:logoX*BB_SCALE,top:logoY*BB_SCALE,height:26*logoScale*BB_SCALE,width:"auto",objectFit:"contain",zIndex:10,userSelect:"none",cursor:"grab"}}/>}
-      <div style={{position:"absolute",bottom:20*BB_SCALE,zIndex:5,...textPos}}>
+      <div style={{position:"absolute",bottom:20*BB_SCALE-toy,zIndex:5,...textPos}}>
         <div style={{fontFamily:"'MaisonNeueExt',sans-serif",fontWeight:800,fontSize:13.5*BB_SCALE,lineHeight:1.15,color:titleColor||"#fff",whiteSpace:"pre-wrap",wordBreak:"break-word",textShadow:"0 2px 6px rgba(0,0,0,.25)"}}>{title||"Judul big banner kamu"}</div>
         {showSubtitle&&subtitle&&<div style={{fontFamily:"'MaisonNeueExt',sans-serif",fontWeight:600,fontSize:12*BB_SCALE,lineHeight:1.2,color:subtitleColor||"rgba(255,255,255,.88)",marginTop:5*BB_SCALE,textShadow:"0 1px 4px rgba(0,0,0,.2)"}}>{subtitle}</div>}
       </div>
@@ -197,6 +253,9 @@ function SmallBannerEditor({onBack}){
   const [subtitleMode,setSubtitleMode]=useState("text");const [discountValue,setDiscountValue]=useState("25");const [discountLang,setDiscountLang]=useState("id");
   const [titleColor,setTitleColor]=useState("#ffffff");const [subtitleColor,setSubtitleColor]=useState("#ffffff");
   const [bannerStyle,setBannerStyle]=useState("floating");
+  const [textAlign,setTextAlign]=useState("left");
+  const [textOffsetX,setTextOffsetX]=useState(0);
+  const [textOffsetY,setTextOffsetY]=useState(0);
   const [productImages,setProductImages]=useState([]);
   const [bgMode,setBgMode]=useState("color");const [bgColor,setBgColor]=useState("#D0021B");const [bgImage,setBgImage]=useState(null);
   const [urlInput,setUrlInput]=useState("");const [exporting,setExporting]=useState(false);
@@ -214,7 +273,7 @@ function SmallBannerEditor({onBack}){
   const onMU=useCallback(()=>{dragTarget.current=null;},[]);
   useEffect(()=>{window.addEventListener("mousemove",onMM);window.addEventListener("mouseup",onMU);return()=>{window.removeEventListener("mousemove",onMM);window.removeEventListener("mouseup",onMU);};},[onMM,onMU]);
 
-  const doExport=async()=>{setExporting(true);try{await exportSmallBanner({title,subtitle,subtitleMode,discountValue,discountLang,showSubtitle,productImages,bgColor,bgImage,bgMode,bannerStyle,titleColor,subtitleColor});}catch(ex){alert("Export failed: "+ex.message);}setExporting(false);};
+  const doExport=async()=>{setExporting(true);try{await exportSmallBanner({title,subtitle,subtitleMode,discountValue,discountLang,showSubtitle,productImages,bgColor,bgImage,bgMode,bannerStyle,titleColor,subtitleColor,textOffsetX,textOffsetY});}catch(ex){alert("Export failed: "+ex.message);}setExporting(false);};
 
   const ImgCard=({pi,i})=>(
     <div style={{background:"#fafafa",border:"1px solid #f0f0f0",borderRadius:10,padding:"10px 12px",marginBottom:10}}>
@@ -234,7 +293,7 @@ function SmallBannerEditor({onBack}){
       <TopBar onBack={onBack} name="Small Banner" size="361 × 90 px"/>
       <div style={{flex:1,display:"flex",overflow:"hidden"}}>
         <div style={{flex:1,...DOT_BG,display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <SmallBannerPreview title={title} subtitle={subtitle} subtitleMode={subtitleMode} discountValue={discountValue} discountLang={discountLang} showSubtitle={showSubtitle} productImages={productImages} bgColor={bgColor} bgImage={bgImage} bgMode={bgMode} bannerStyle={bannerStyle} titleColor={titleColor} subtitleColor={subtitleColor} onMouseDownItem={onMouseDownItem}/>
+          <SmallBannerPreview title={title} subtitle={subtitle} subtitleMode={subtitleMode} discountValue={discountValue} discountLang={discountLang} showSubtitle={showSubtitle} productImages={productImages} bgColor={bgColor} bgImage={bgImage} bgMode={bgMode} bannerStyle={bannerStyle} titleColor={titleColor} subtitleColor={subtitleColor} onMouseDownItem={onMouseDownItem} textAlign={textAlign} textOffsetX={textOffsetX} textOffsetY={textOffsetY}/>
         </div>
         <div style={{width:SIDEBAR_W,background:"#fff",borderLeft:"1px solid #e8e8e8",display:"flex",flexDirection:"column",flexShrink:0}}>
           <SidebarTabBar activeTab={tab} setActiveTab={setTab}/>
@@ -244,9 +303,18 @@ function SmallBannerEditor({onBack}){
                 <div style={{fontSize:16,fontWeight:700,color:"#111",marginBottom:3}}>Banner creator</div>
                 <div style={{fontSize:12,color:"#999",lineHeight:1.45,marginBottom:18}}>Capture attention with a clear and concise text overlay.</div>
                 <SLabel sub="MaisonNeuExt ExtraBold · 15px · LH 100%">Title</SLabel>
-                <textarea value={title} onChange={e=>setTitle(e.target.value.slice(0,365))} placeholder="e.g. Yang bikin harimu manis" rows={4} style={{width:"100%",padding:"10px 12px",border:"1px solid #e0e0e0",borderRadius:10,fontSize:13,resize:"vertical",fontFamily:"inherit",outline:"none",boxSizing:"border-box",lineHeight:1.4,color:"#111",marginTop:6,marginBottom:4}}/>
+                <textarea value={title} onChange={e=>setTitle(e.target.value.slice(0,365))} placeholder="e.g. Yang bikin harimu manis" rows={4} style={{width:"100%",padding:"10px 12px",border:"1px solid #e0e0e0",borderRadius:10,fontSize:13,resize:"vertical",fontFamily:"inherit",outline:"none",boxSizing:"border-box",lineHeight:1.4,color:"#111",background:"#fff",marginTop:6,marginBottom:4}}/>
                 <FontColorRow color={titleColor} onChange={setTitleColor}/>
                 <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}><span style={{fontSize:11,color:"#ccc"}}>{title.length}/365</span></div>
+                <Divider/>
+                <SLabel>Text position</SLabel>
+                <div style={{display:"flex",gap:6,marginTop:8,marginBottom:10}}>
+                  {[{v:"left",l:"← Left"},{v:"center",l:"Center"},{v:"right",l:"Right →"}].map(a=><button key={a.v} onClick={()=>setTextAlign(a.v)} style={{flex:1,padding:"7px 0",border:"2px solid",borderRadius:8,cursor:"pointer",fontSize:11,fontWeight:600,borderColor:textAlign===a.v?"#D0021B":"#e0e0e0",background:textAlign===a.v?"#fff5f5":"#fff",color:textAlign===a.v?"#D0021B":"#777"}}>{a.l}</button>)}
+                </div>
+                <div style={{display:"flex",gap:8,marginBottom:12}}>
+                  <div style={{flex:1}}><div style={{fontSize:11,color:"#aaa",marginBottom:3}}>Offset X</div><input type="number" value={textOffsetX} onChange={e=>setTextOffsetX(+e.target.value)} style={{width:"100%",padding:"7px 10px",border:"1px solid #e0e0e0",borderRadius:8,fontSize:12,outline:"none",boxSizing:"border-box"}}/></div>
+                  <div style={{flex:1}}><div style={{fontSize:11,color:"#aaa",marginBottom:3}}>Offset Y</div><input type="number" value={textOffsetY} onChange={e=>setTextOffsetY(+e.target.value)} style={{width:"100%",padding:"7px 10px",border:"1px solid #e0e0e0",borderRadius:8,fontSize:12,outline:"none",boxSizing:"border-box"}}/></div>
+                </div>
                 <Divider/>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:showSubtitle?12:0}}>
                   <SLabel>Subtitle</SLabel><Toggle checked={showSubtitle} onChange={setShowSubtitle}/>
@@ -286,7 +354,7 @@ function SmallBannerEditor({onBack}){
                   <StyleBtn active={bgMode==="color"} onClick={()=>setBgMode("color")}>🎨 Color</StyleBtn>
                   <StyleBtn active={bgMode==="image"} onClick={()=>setBgMode("image")}>🖼 Image</StyleBtn>
                 </div>
-                {bgMode==="color"?<><ColorSwatches value={bgColor} onChange={setBgColor}/><HexInput value={bgColor} onChange={setBgColor}/><ContrastWarning color={bgColor}/></>:<><input ref={bgRef} type="file" accept="image/*" style={{display:"none"}} onChange={addBg}/><OutlineBtn onClick={()=>bgRef.current.click()} icon="⊕" fullWidth>{bgImage?"Replace BG image":"Upload background image"}</OutlineBtn>{bgImage&&<div style={{display:"flex",alignItems:"center",gap:8,marginTop:8}}><img src={bgImage} alt="bg" style={{width:48,height:24,objectFit:"cover",borderRadius:4,border:"1px solid #eee"}}/><button onClick={()=>setBgImage(null)} style={{fontSize:12,color:"#e55",background:"none",border:"none",cursor:"pointer"}}>Remove</button></div>}</>}
+                {bgMode==="color"?<><ColorSwatches value={bgColor} onChange={setBgColor}/><HexInput value={bgColor} onChange={setBgColor}/><ContrastWarning color={bgColor}/></>:<><input ref={bgRef} type="file" accept="image/*" style={{display:"none"}} onChange={addBg}/><OutlineBtn onClick={()=>bgRef.current.click()} icon="⊕" fullWidth>{bgImage?"Replace BG image":"Upload background image"}</OutlineBtn><div style={{fontSize:11,color:"#aaa",marginTop:5}}>Recommended: 361 × 90 px</div>{bgImage&&<div style={{display:"flex",alignItems:"center",gap:8,marginTop:8}}><img src={bgImage} alt="bg" style={{width:48,height:24,objectFit:"cover",borderRadius:4,border:"1px solid #eee"}}/><button onClick={()=>setBgImage(null)} style={{fontSize:12,color:"#e55",background:"none",border:"none",cursor:"pointer"}}>Remove</button></div>}</>}
               </>
             )}
           </div>
@@ -307,7 +375,7 @@ function BigBannerEditor({onBack}){
   const [tab,setTab]=useState("content");
   const [title,setTitle]=useState("");const [titleColor,setTitleColor]=useState("#ffffff");
   const [subtitle,setSubtitle]=useState("");const [subtitleColor,setSubtitleColor]=useState("#ffffff");
-  const [showSubtitle,setShowSubtitle]=useState(false);const [textAlign,setTextAlign]=useState("left");
+  const [showSubtitle,setShowSubtitle]=useState(false);const [textAlign,setTextAlign]=useState("left");const [textOffsetX,setTextOffsetX]=useState(0);const [textOffsetY,setTextOffsetY]=useState(0);
   const [logo,setLogo]=useState(null);const [logoScale,setLogoScale]=useState(1);const [logoX,setLogoX]=useState(14);const [logoY,setLogoY]=useState(14);
   const [heroImages,setHeroImages]=useState([]);
   const [bgColor,setBgColor]=useState("#1B2D6B");const [bgImage,setBgImage]=useState(null);const [bgMode,setBgMode]=useState("color");
@@ -334,7 +402,7 @@ function BigBannerEditor({onBack}){
   const onMU=useCallback(()=>{dragTarget.current=null;},[]);
   useEffect(()=>{window.addEventListener("mousemove",onMM);window.addEventListener("mouseup",onMU);return()=>{window.removeEventListener("mousemove",onMM);window.removeEventListener("mouseup",onMU);};},[onMM,onMU]);
 
-  const doExport=async()=>{setExporting(true);try{await exportBigBanner({title,titleColor,subtitle,subtitleColor,showSubtitle,logo,logoScale,logoX,logoY,heroImages,bgColor,bgImage,bgMode,textAlign});}catch(ex){alert("Export failed: "+ex.message);}setExporting(false);};
+  const doExport=async()=>{setExporting(true);try{await exportBigBanner({title,titleColor,subtitle,subtitleColor,showSubtitle,logo,logoScale,logoX,logoY,heroImages,bgColor,bgImage,bgMode,textAlign,textOffsetX,textOffsetY});}catch(ex){alert("Export failed: "+ex.message);}setExporting(false);};
 
   const HeroCard=({h,i})=>(
     <div style={{background:"#fafafa",border:"1px solid #f0f0f0",borderRadius:10,padding:"10px 12px",marginBottom:10}}>
@@ -354,7 +422,7 @@ function BigBannerEditor({onBack}){
       <TopBar onBack={onBack} name="Big Banner" size="360 × 250 px"/>
       <div style={{flex:1,display:"flex",overflow:"hidden"}}>
         <div style={{flex:1,...DOT_BG,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default"}}>
-          <BigBannerPreview title={title} titleColor={titleColor} subtitle={subtitle} subtitleColor={subtitleColor} showSubtitle={showSubtitle} logo={logo} logoScale={logoScale} logoX={logoX} logoY={logoY} heroImages={heroImages} bgColor={bgColor} bgImage={bgImage} bgMode={bgMode} textAlign={textAlign} onMouseDownItem={onMouseDownItem}/>
+          <BigBannerPreview title={title} titleColor={titleColor} subtitle={subtitle} subtitleColor={subtitleColor} showSubtitle={showSubtitle} logo={logo} logoScale={logoScale} logoX={logoX} logoY={logoY} heroImages={heroImages} bgColor={bgColor} bgImage={bgImage} bgMode={bgMode} textAlign={textAlign} textOffsetX={textOffsetX} textOffsetY={textOffsetY} onMouseDownItem={onMouseDownItem}/>
         </div>
         <div style={{width:SIDEBAR_W,background:"#fff",borderLeft:"1px solid #e8e8e8",display:"flex",flexDirection:"column",flexShrink:0}}>
           <SidebarTabBar activeTab={tab} setActiveTab={setTab}/>
@@ -364,7 +432,7 @@ function BigBannerEditor({onBack}){
                 <div style={{fontSize:16,fontWeight:700,color:"#111",marginBottom:3}}>Banner creator</div>
                 <div style={{fontSize:12,color:"#999",lineHeight:1.45,marginBottom:18}}>Design a rich full-width banner that showcases your brand and offer.</div>
                 <SLabel sub="MaisonNeuExt ExtraBold · 13.5px · LH 100%">Title</SLabel>
-                <textarea value={title} onChange={e=>setTitle(e.target.value.slice(0,365))} placeholder="e.g. Anywhere. Anytime." rows={3} style={{width:"100%",padding:"10px 12px",border:"1px solid #e0e0e0",borderRadius:10,fontSize:13,resize:"vertical",fontFamily:"inherit",outline:"none",boxSizing:"border-box",lineHeight:1.4,color:"#111",marginTop:6,marginBottom:4}}/>
+                <textarea value={title} onChange={e=>setTitle(e.target.value.slice(0,365))} placeholder="e.g. Anywhere. Anytime." rows={3} style={{width:"100%",padding:"10px 12px",border:"1px solid #e0e0e0",borderRadius:10,fontSize:13,resize:"vertical",fontFamily:"inherit",outline:"none",boxSizing:"border-box",lineHeight:1.4,color:"#111",background:"#fff",marginTop:6,marginBottom:4}}/>
                 <FontColorRow color={titleColor} onChange={setTitleColor}/>
                 <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}><span style={{fontSize:11,color:"#ccc"}}>{title.length}/365</span></div>
                 <Divider/>
@@ -376,6 +444,10 @@ function BigBannerEditor({onBack}){
                 <SLabel>Text alignment</SLabel>
                 <div style={{display:"flex",gap:6,marginTop:8}}>
                   {[{v:"left",l:"← Left"},{v:"center",l:"Center"},{v:"right",l:"Right →"}].map(a=><button key={a.v} onClick={()=>setTextAlign(a.v)} style={{flex:1,padding:"8px 0",border:"2px solid",borderRadius:8,cursor:"pointer",fontSize:11,fontWeight:600,borderColor:textAlign===a.v?"#D0021B":"#e0e0e0",background:textAlign===a.v?"#fff5f5":"#fff",color:textAlign===a.v?"#D0021B":"#777"}}>{a.l}</button>)}
+                </div>
+                <div style={{display:"flex",gap:8,marginTop:10}}>
+                  <div style={{flex:1}}><div style={{fontSize:11,color:"#aaa",marginBottom:3}}>Offset X</div><input type="number" value={textOffsetX} onChange={e=>setTextOffsetX(+e.target.value)} style={{width:"100%",padding:"7px 10px",border:"1px solid #e0e0e0",borderRadius:8,fontSize:12,outline:"none",boxSizing:"border-box"}}/></div>
+                  <div style={{flex:1}}><div style={{fontSize:11,color:"#aaa",marginBottom:3}}>Offset Y</div><input type="number" value={textOffsetY} onChange={e=>setTextOffsetY(+e.target.value)} style={{width:"100%",padding:"7px 10px",border:"1px solid #e0e0e0",borderRadius:8,fontSize:12,outline:"none",boxSizing:"border-box"}}/></div>
                 </div>
               </>
             ):(
@@ -407,7 +479,7 @@ function BigBannerEditor({onBack}){
                   <StyleBtn active={bgMode==="color"} onClick={()=>setBgMode("color")}>🎨 Color</StyleBtn>
                   <StyleBtn active={bgMode==="image"} onClick={()=>setBgMode("image")}>🖼 Image</StyleBtn>
                 </div>
-                {bgMode==="color"?<><ColorSwatches value={bgColor} onChange={setBgColor}/><HexInput value={bgColor} onChange={setBgColor}/><ContrastWarning color={bgColor}/></>:<><input ref={bgRef} type="file" accept="image/*" style={{display:"none"}}/><OutlineBtn onClick={()=>loadFile(bgRef,(src)=>setBgImage(src))} icon="⊕" fullWidth>{bgImage?"Replace BG image":"Upload background image"}</OutlineBtn>{bgImage&&<div style={{display:"flex",alignItems:"center",gap:8,marginTop:8}}><img src={bgImage} alt="bg" style={{width:56,height:32,objectFit:"cover",borderRadius:4,border:"1px solid #eee"}}/><button onClick={()=>setBgImage(null)} style={{fontSize:12,color:"#e55",background:"none",border:"none",cursor:"pointer"}}>Remove</button></div>}</>}
+                {bgMode==="color"?<><ColorSwatches value={bgColor} onChange={setBgColor}/><HexInput value={bgColor} onChange={setBgColor}/><ContrastWarning color={bgColor}/></>:<><input ref={bgRef} type="file" accept="image/*" style={{display:"none"}}/><OutlineBtn onClick={()=>loadFile(bgRef,(src)=>setBgImage(src))} icon="⊕" fullWidth>{bgImage?"Replace BG image":"Upload background image"}</OutlineBtn><div style={{fontSize:11,color:"#aaa",marginTop:5}}>Recommended: 360 × 250 px</div>{bgImage&&<div style={{display:"flex",alignItems:"center",gap:8,marginTop:8}}><img src={bgImage} alt="bg" style={{width:56,height:32,objectFit:"cover",borderRadius:4,border:"1px solid #eee"}}/><button onClick={()=>setBgImage(null)} style={{fontSize:12,color:"#e55",background:"none",border:"none",cursor:"pointer"}}>Remove</button></div>}</>}
               </>
             )}
           </div>

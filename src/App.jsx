@@ -128,15 +128,15 @@ async function exportSmallBanner({title,subtitle,subtitleMode,discountValue,disc
   }
   ctx.restore();
 
-  // Step 3: Draw product images — coordinates are relative to full canvas height.
-  // In floating mode, PILL_TOP=60 so a product image at y=30 sits 30px above the pill top.
+  // Step 3: Product image coords are relative to pill top (pi.y=0 = pill top, negative = above).
+  // Add PILL_TOP to translate into canvas coords.
   for(const pi of(productImages||[])){
     try{
       const img=await loadImg(pi.src);
       const iw=(pi.natW||img.naturalWidth)*pi.scale;
       const ih=(pi.natH||img.naturalHeight)*pi.scale;
       ctx.save();
-      ctx.translate(pi.x, pi.y);
+      ctx.translate(pi.x, PILL_TOP + pi.y);
       ctx.rotate((pi.rotation||0)*Math.PI/180);
       ctx.drawImage(img,-iw/2,-ih/2,iw,ih);
       ctx.restore();
@@ -238,14 +238,14 @@ function SmallBannerPreview({title,subtitle,subtitleMode,discountValue,discountL
           );
         })()}
       </div>
-      {/* Product images — top:pi.y*SB_SCALE is relative to full container top, matching export coords */}
+      {/* Product images — Y is relative to pill top. Pill sits at bottom, so offset by HEADROOM */}
       {(productImages||[]).map((pi,i)=>(
         <img key={i} src={pi.src} alt=""
           onMouseDown={e=>onMouseDownItem&&onMouseDownItem(e,`product-${i}`)}
           style={{
             position:"absolute",
             left:pi.x*SB_SCALE,
-            top:pi.y*SB_SCALE,
+            top:(HEADROOM+pi.y)*SB_SCALE,
             width:(pi.natW||100)*pi.scale*SB_SCALE,
             height:"auto",
             objectFit:"contain",
@@ -309,9 +309,9 @@ function SmallBannerEditor({onBack}){
   const dragTarget=useRef(null),dragStart=useRef({});
 
   const HEADROOM=bannerStyle==="floating"?60:0;
-  const addFiles=e=>{Array.from(e.target.files).forEach(f=>{const r=new FileReader();r.onload=ev=>{const img=new Image();img.onload=()=>setProductImages(p=>[...p,{src:ev.target.result,name:f.name,x:SBW*.72,y:HEADROOM+(SBH*.3),scale:.6,rotation:0,natW:img.naturalWidth,natH:img.naturalHeight}]);img.src=ev.target.result;};r.readAsDataURL(f);});e.target.value="";};
+  const addFiles=e=>{Array.from(e.target.files).forEach(f=>{const r=new FileReader();r.onload=ev=>{const img=new Image();img.onload=()=>setProductImages(p=>[...p,{src:ev.target.result,name:f.name,x:SBW*.72,y:SBH*.2,scale:.6,rotation:0,natW:img.naturalWidth,natH:img.naturalHeight}]);img.src=ev.target.result;};r.readAsDataURL(f);});e.target.value="";};
   const addBg=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>setBgImage(ev.target.result);r.readAsDataURL(f);e.target.value="";};
-  const addUrl=()=>{if(!urlInput.trim())return;const img=new Image();img.crossOrigin="anonymous";img.onload=()=>setProductImages(p=>[...p,{src:urlInput.trim(),name:"URL image",x:SBW*.72,y:HEADROOM+(SBH*.3),scale:.6,rotation:0,natW:img.naturalWidth,natH:img.naturalHeight}]);img.src=urlInput.trim();setUrlInput("");};
+  const addUrl=()=>{if(!urlInput.trim())return;const img=new Image();img.crossOrigin="anonymous";img.onload=()=>setProductImages(p=>[...p,{src:urlInput.trim(),name:"URL image",x:SBW*.72,y:SBH*.2,scale:.6,rotation:0,natW:img.naturalWidth,natH:img.naturalHeight}]);img.src=urlInput.trim();setUrlInput("");};
   const updateProd=(i,patch)=>setProductImages(p=>p.map((h,j)=>j===i?{...h,...patch}:h));
   const removeProd=i=>setProductImages(p=>p.filter((_,j)=>j!==i));
 

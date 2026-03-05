@@ -71,20 +71,32 @@ const MAISON_NEUE_CSS = `
 ═══════════════════════════════════════════════════════════════ */
 async function exportSmallBanner({title,subtitle,subtitleMode,discountValue,discountLang,showSubtitle,productImages,bgColor,bgImage,bgMode,bannerStyle,titleColor,subtitleColor,textOffsetX,textOffsetY}){
   const W=361,H=90,R=16;
-  // For floating: canvas is exactly 361x90 with transparent BG.
-  // Product images are drawn outside the pill clip so they float above/beyond.
-  const canvas=document.createElement("canvas");canvas.width=W;canvas.height=H;
+  const isFloating=bannerStyle==="floating";
+
+  // Always 361x90. For floating: pill is clipped, images drawn AFTER restore so they paint
+  // over the pill edges freely — creating the pop-out illusion within the same dimensions.
+  const canvas=document.createElement("canvas");
+  canvas.width=W;canvas.height=H;
   const ctx=canvas.getContext("2d");
 
-  // Step 1: Draw pill BG with clip
+  // Step 1: Draw pill background with rounded clip
   ctx.save();
   roundRectPath(ctx,0,0,W,H,R);ctx.clip();
-  if(bgMode==="image"&&bgImage){try{const bi=await loadImg(bgImage);ctx.drawImage(bi,0,0,W,H);}catch{ctx.fillStyle=bgColor;ctx.fillRect(0,0,W,H);}}
-  else{const g=ctx.createLinearGradient(0,0,W,H);g.addColorStop(0,bgColor);g.addColorStop(1,darken(bgColor,30));ctx.fillStyle=g;ctx.fillRect(0,0,W,H);}
-  const sh=ctx.createLinearGradient(0,0,0,H*.5);sh.addColorStop(0,"rgba(255,255,255,.11)");sh.addColorStop(1,"rgba(255,255,255,0)");ctx.fillStyle=sh;ctx.fillRect(0,0,W,H*.5);
-  ctx.restore();
+  if(bgMode==="image"&&bgImage){
+    try{const bi=await loadImg(bgImage);ctx.drawImage(bi,0,0,W,H);}
+    catch{ctx.fillStyle=bgColor;ctx.fillRect(0,0,W,H);}
+  } else {
+    const g=ctx.createLinearGradient(0,0,W,H);
+    g.addColorStop(0,bgColor);g.addColorStop(1,darken(bgColor,30));
+    ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  }
+  const sh=ctx.createLinearGradient(0,0,0,H*.5);
+  sh.addColorStop(0,"rgba(255,255,255,.11)");sh.addColorStop(1,"rgba(255,255,255,0)");
+  ctx.fillStyle=sh;ctx.fillRect(0,0,W,H*.5);
+  ctx.restore(); // clip released here
 
-  // Step 2: Draw text (inside pill visually, no clip needed)
+  // Step 2: Draw text (no clip active, text stays within pill visually)
+  const ta=textOffsetX!==undefined?(textOffsetX===0&&textOffsetY===0?"left":"left"):"left";
   const textX=16+(textOffsetX||0);
   const textY=H/2+(textOffsetY||0);
   ctx.save();
@@ -111,7 +123,7 @@ async function exportSmallBanner({title,subtitle,subtitleMode,discountValue,disc
   }
   ctx.restore();
 
-  // Step 3: Draw product images WITHOUT clip — floating style lets them overflow
+  // Step 3: Draw product images — no clip active so they paint over pill edges (floating illusion)
   for(const pi of(productImages||[])){
     try{
       const img=await loadImg(pi.src);
@@ -127,7 +139,9 @@ async function exportSmallBanner({title,subtitle,subtitleMode,discountValue,disc
 
   const blob=await new Promise(r=>canvas.toBlob(r,"image/png"));
   const url=URL.createObjectURL(blob);
-  const a=document.createElement("a");a.href=url;a.download="small-banner.png";a.click();URL.revokeObjectURL(url);
+  const a=document.createElement("a");a.href=url;
+  a.download="small-banner.png";
+  a.click();URL.revokeObjectURL(url);
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -183,10 +197,12 @@ const SBW=361,SBH=90,SBR=16,SB_SCALE=2;
 function SmallBannerPreview({title,subtitle,subtitleMode,discountValue,discountLang,showSubtitle,productImages,bgColor,bgImage,bgMode,bannerStyle,titleColor,subtitleColor,onMouseDownItem,textAlign,textOffsetX,textOffsetY}){
   const useBg=bgMode==="image"&&bgImage;
   const gradient=useBg?"none":`linear-gradient(108deg,${bgColor} 0%,${darken(bgColor,30)} 100%)`;
-  const OVERFLOW=bannerStyle==="floating"?55:0;
+  const isFloating=bannerStyle==="floating";
   return(
-    <div style={{width:SBW*SB_SCALE,height:(SBH+OVERFLOW)*SB_SCALE,position:"relative",overflow:"hidden",flexShrink:0}}>
-      <div style={{position:"absolute",bottom:0,left:0,width:SBW*SB_SCALE,height:SBH*SB_SCALE,borderRadius:SBR*SB_SCALE,overflow:"hidden",background:gradient,boxShadow:"0 4px 20px rgba(0,0,0,.18)"}}>
+    // Always 361x90 at display scale. overflow:visible so floating images spill out.
+    <div style={{width:SBW*SB_SCALE,height:SBH*SB_SCALE,position:"relative",flexShrink:0,overflow:isFloating?"visible":"hidden"}}>
+      {/* Pill fills the full container */}
+      <div style={{position:"absolute",inset:0,borderRadius:SBR*SB_SCALE,overflow:"hidden",background:gradient,boxShadow:"0 4px 20px rgba(0,0,0,.18)"}}>
         {useBg&&<img src={bgImage} alt="bg" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",zIndex:0}}/>}
         <div style={{position:"absolute",top:0,left:0,right:0,height:"50%",background:"linear-gradient(180deg,rgba(255,255,255,.11) 0%,transparent 100%)",zIndex:1,borderRadius:`${SBR*SB_SCALE}px ${SBR*SB_SCALE}px 0 0`}}/>
         {(()=>{
@@ -194,22 +210,44 @@ function SmallBannerPreview({title,subtitle,subtitleMode,discountValue,discountL
           const tox=(textOffsetX||0)*SB_SCALE;
           const toy=(textOffsetY||0)*SB_SCALE;
           const posStyle=aln==="center"
-            ?{left:"50%",transform:`translate(-50%,calc(-50% + ${toy}px))`,textAlign:"center",width:SBW*SB_SCALE*.7}
+            ?{left:"50%",transform:`translate(-50%,calc(-50% + ${toy}px))`,textAlign:"center",width:SBW*SB_SCALE*.55}
             :aln==="right"
-            ?{right:16*SB_SCALE+tox,transform:`translateY(calc(-50% + ${toy}px))`,textAlign:"right",maxWidth:SBW*SB_SCALE*.7}
-            :{left:16*SB_SCALE+tox,transform:`translateY(calc(-50% + ${toy}px))`,textAlign:"left",maxWidth:SBW*SB_SCALE*.6};
+            ?{right:16*SB_SCALE-tox,transform:`translateY(calc(-50% + ${toy}px))`,textAlign:"right",maxWidth:SBW*SB_SCALE*.6}
+            :{left:16*SB_SCALE+tox,transform:`translateY(calc(-50% + ${toy}px))`,textAlign:"left",maxWidth:SBW*SB_SCALE*.55};
           return(
             <div style={{position:"absolute",top:"50%",zIndex:4,...posStyle}}>
               <div style={{fontFamily:"'MaisonNeueExt',sans-serif",fontWeight:800,fontSize:15*SB_SCALE,lineHeight:1.05,color:titleColor||"#fff",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{title||"Judul banner kamu"}</div>
-              {showSubtitle&&<div style={{marginTop:2*SB_SCALE}}>{subtitleMode==="discount"?<div style={{display:"flex",alignItems:"baseline",gap:4*SB_SCALE}}><span style={{fontFamily:"'MaisonNeueExt',sans-serif",fontWeight:700,fontSize:10*SB_SCALE,lineHeight:1,color:subtitleColor||"#fff",opacity:.9}}>{discountLang==="id"?"Diskon s.d.":"Discount up to"}</span><span style={{fontFamily:"'MaisonNeueExt',sans-serif",fontWeight:800,fontSize:14*SB_SCALE,lineHeight:1,color:subtitleColor||"#fff"}}>{discountValue}%</span></div>:<div style={{fontFamily:"'MaisonNeueExt',sans-serif",fontWeight:700,fontSize:10*SB_SCALE,lineHeight:1,color:subtitleColor||"#fff",opacity:.88}}>{subtitle}</div>}</div>}
+              {showSubtitle&&<div style={{marginTop:2*SB_SCALE}}>
+                {subtitleMode==="discount"
+                  ?<div style={{display:"flex",alignItems:"baseline",gap:3*SB_SCALE,justifyContent:aln==="center"?"center":aln==="right"?"flex-end":"flex-start"}}>
+                    <span style={{fontFamily:"'MaisonNeueExt',sans-serif",fontWeight:700,fontSize:10*SB_SCALE,lineHeight:1,color:subtitleColor||"#fff",opacity:.9}}>{discountLang==="id"?"Diskon s.d.":"Discount up to"}</span>
+                    <span style={{fontFamily:"'MaisonNeueExt',sans-serif",fontWeight:800,fontSize:14*SB_SCALE,lineHeight:1,color:subtitleColor||"#fff"}}>{discountValue}%</span>
+                  </div>
+                  :<div style={{fontFamily:"'MaisonNeueExt',sans-serif",fontWeight:700,fontSize:10*SB_SCALE,lineHeight:1,color:subtitleColor||"#fff",opacity:.88}}>{subtitle}</div>
+                }
+              </div>}
             </div>
           );
         })()}
       </div>
+      {/* Product images — overflow pill edges in floating mode */}
       {(productImages||[]).map((pi,i)=>(
         <img key={i} src={pi.src} alt=""
           onMouseDown={e=>onMouseDownItem&&onMouseDownItem(e,`product-${i}`)}
-          style={{position:"absolute",left:pi.x*SB_SCALE,top:pi.y*SB_SCALE,width:(pi.natW||100)*pi.scale*SB_SCALE,height:"auto",objectFit:"contain",zIndex:5+i,filter:"drop-shadow(0 4px 14px rgba(0,0,0,.35))",userSelect:"none",cursor:"grab",transform:"translate(-50%,-50%)"}}
+          style={{
+            position:"absolute",
+            left:pi.x*SB_SCALE,
+            top:pi.y*SB_SCALE,
+            width:(pi.natW||100)*pi.scale*SB_SCALE,
+            height:"auto",
+            objectFit:"contain",
+            zIndex:5+i,
+            filter:"drop-shadow(0 4px 14px rgba(0,0,0,.35))",
+            userSelect:"none",
+            cursor:"grab",
+            transform:`translate(-50%,-50%) rotate(${pi.rotation||0}deg)`,
+            transformOrigin:"center center",
+          }}
         />
       ))}
     </div>
@@ -262,7 +300,7 @@ function SmallBannerEditor({onBack}){
   const fileRef=useRef(),bgRef=useRef();
   const dragTarget=useRef(null),dragStart=useRef({});
 
-  const addFiles=e=>{Array.from(e.target.files).forEach(f=>{const r=new FileReader();r.onload=ev=>{const img=new Image();img.onload=()=>setProductImages(p=>[...p,{src:ev.target.result,name:f.name,x:SBW*.7,y:SBH/2,scale:.6,rotation:0,natW:img.naturalWidth,natH:img.naturalHeight}]);img.src=ev.target.result;};r.readAsDataURL(f);});e.target.value="";};
+  const addFiles=e=>{Array.from(e.target.files).forEach(f=>{const r=new FileReader();r.onload=ev=>{const img=new Image();img.onload=()=>setProductImages(p=>[...p,{src:ev.target.result,name:f.name,x:SBW*.72,y:SBH*.3,scale:.6,rotation:0,natW:img.naturalWidth,natH:img.naturalHeight}]);img.src=ev.target.result;};r.readAsDataURL(f);});e.target.value="";};
   const addBg=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>setBgImage(ev.target.result);r.readAsDataURL(f);e.target.value="";};
   const addUrl=()=>{if(!urlInput.trim())return;const img=new Image();img.crossOrigin="anonymous";img.onload=()=>setProductImages(p=>[...p,{src:urlInput.trim(),name:"URL image",x:SBW*.7,y:SBH/2,scale:.6,rotation:0,natW:img.naturalWidth,natH:img.naturalHeight}]);img.src=urlInput.trim();setUrlInput("");};
   const updateProd=(i,patch)=>setProductImages(p=>p.map((h,j)=>j===i?{...h,...patch}:h));

@@ -69,15 +69,16 @@ const MAISON_NEUE_CSS = `
 /* ═══════════════════════════════════════════════════════════════
    EXPORT — SMALL BANNER
 ═══════════════════════════════════════════════════════════════ */
-async function exportSmallBanner({title,subtitle,subtitleMode,discountValue,discountLang,showSubtitle,productImages,bgColor,bgImage,bgMode,bannerStyle,titleColor,subtitleColor,textOffsetX,textOffsetY}){
+async function exportSmallBanner({title,subtitle,subtitleMode,discountValue,discountLang,showSubtitle,productImages,bgColor,bgImage,bgMode,bannerStyle,titleColor,subtitleColor,textOffsetX,textOffsetY,exportScale=1}){
   const PILL_W=361,PILL_H=90,R=16;
   const isFloating=bannerStyle==="floating";
 
   if(!isFloating){
-    // Blocked: always exactly 361×90, images clipped to pill
+    // Blocked: exactly 361×90 * exportScale
+    const S=exportScale;
     const canvas=document.createElement("canvas");
-    canvas.width=PILL_W;canvas.height=PILL_H;
-    const ctx=canvas.getContext("2d");
+    canvas.width=PILL_W*S;canvas.height=PILL_H*S;
+    const ctx=canvas.getContext("2d");ctx.scale(S,S);
     ctx.save();roundRectPath(ctx,0,0,PILL_W,PILL_H,R);ctx.clip();
     if(bgMode==="image"&&bgImage){try{const bi=await loadImg(bgImage);ctx.drawImage(bi,0,0,PILL_W,PILL_H);}catch{ctx.fillStyle=bgColor;ctx.fillRect(0,0,PILL_W,PILL_H);}}
     else{const g=ctx.createLinearGradient(0,0,PILL_W,PILL_H);g.addColorStop(0,bgColor);g.addColorStop(1,darken(bgColor,30));ctx.fillStyle=g;ctx.fillRect(0,0,PILL_W,PILL_H);}
@@ -134,9 +135,10 @@ async function exportSmallBanner({title,subtitle,subtitleMode,discountValue,disc
   const CW=PILL_W+extraLeft+extraRight;
   const CH=PILL_H+extraTop+extraBottom;
 
+  const S=exportScale;
   const canvas=document.createElement("canvas");
-  canvas.width=CW;canvas.height=CH;
-  const ctx=canvas.getContext("2d");
+  canvas.width=CW*S;canvas.height=CH*S;
+  const ctx=canvas.getContext("2d");ctx.scale(S,S);
 
   // Step 3: Draw pill at (PILL_X, PILL_TOP)
   ctx.save();
@@ -196,10 +198,10 @@ async function exportSmallBanner({title,subtitle,subtitleMode,discountValue,disc
 /* ═══════════════════════════════════════════════════════════════
    EXPORT — BIG BANNER
 ═══════════════════════════════════════════════════════════════ */
-async function exportBigBanner({title,titleColor,subtitle,subtitleColor,showSubtitle,logo,logoScale,logoX,logoY,heroImages,bgColor,bgImage,bgMode,textAlign,textOffsetX,textOffsetY}){
-  const W=360,H=250,R=16;
-  const canvas=document.createElement("canvas");canvas.width=W;canvas.height=H;
-  const ctx=canvas.getContext("2d");
+async function exportBigBanner({title,titleColor,subtitle,subtitleColor,showSubtitle,logo,logoScale,logoX,logoY,heroImages,bgColor,bgImage,bgMode,textAlign,textOffsetX,textOffsetY,exportScale=1}){
+  const W=360,H=250,R=16,S=exportScale;
+  const canvas=document.createElement("canvas");canvas.width=W*S;canvas.height=H*S;
+  const ctx=canvas.getContext("2d");ctx.scale(S,S);
   ctx.save();roundRectPath(ctx,0,0,W,H,R);ctx.clip();
   if(bgMode==="image"&&bgImage){try{const bi=await loadImg(bgImage);ctx.drawImage(bi,0,0,W,H);}catch{ctx.fillStyle=bgColor;ctx.fillRect(0,0,W,H);}}
   else{const g=ctx.createLinearGradient(0,0,W,H);g.addColorStop(0,bgColor);g.addColorStop(1,darken(bgColor,35));ctx.fillStyle=g;ctx.fillRect(0,0,W,H);}
@@ -220,10 +222,10 @@ async function exportBigBanner({title,titleColor,subtitle,subtitleColor,showSubt
 /* ═══════════════════════════════════════════════════════════════
    EXPORT — CUSTOM BANNER
 ═══════════════════════════════════════════════════════════════ */
-async function exportCustomBanner({canvasW,canvasH,bgMode,bgColor,bgColor2,bgImage,cornerRadius,elements}){
-  const W=canvasW,H=canvasH,R=parseInt(cornerRadius)||0;
-  const canvas=document.createElement("canvas");canvas.width=W;canvas.height=H;
-  const ctx=canvas.getContext("2d");
+async function exportCustomBanner({canvasW,canvasH,bgMode,bgColor,bgColor2,bgImage,cornerRadius,elements,exportScale=1}){
+  const W=canvasW,H=canvasH,R=parseInt(cornerRadius)||0,S=exportScale;
+  const canvas=document.createElement("canvas");canvas.width=W*S;canvas.height=H*S;
+  const ctx=canvas.getContext("2d");ctx.scale(S,S);
   ctx.save();if(R>0){roundRectPath(ctx,0,0,W,H,R);ctx.clip();}
   if(bgMode==="image"&&bgImage){try{const bi=await loadImg(bgImage);ctx.drawImage(bi,0,0,W,H);}catch{ctx.fillStyle=bgColor||"#fff";ctx.fillRect(0,0,W,H);}}
   else if(bgMode==="gradient"){const g=ctx.createLinearGradient(0,0,W,H);g.addColorStop(0,bgColor||"#6366f1");g.addColorStop(1,bgColor2||"#ec4899");ctx.fillStyle=g;ctx.fillRect(0,0,W,H);}
@@ -361,6 +363,7 @@ function SmallBannerEditor({onBack}){
   const [subtitleMode,setSubtitleMode]=useState("text");const [discountValue,setDiscountValue]=useState("25");const [discountLang,setDiscountLang]=useState("id");
   const [titleColor,setTitleColor]=useState("#ffffff");const [subtitleColor,setSubtitleColor]=useState("#ffffff");
   const [bannerStyle,setBannerStyle]=useState("floating");
+  const [exportScale,setExportScale]=useState(2);
   const [textAlign,setTextAlign]=useState("left");
   const [textOffsetX,setTextOffsetX]=useState(0);
   const [textOffsetY,setTextOffsetY]=useState(0);
@@ -392,7 +395,7 @@ function SmallBannerEditor({onBack}){
   const onMU=useCallback(()=>{dragTarget.current=null;},[]);
   useEffect(()=>{window.addEventListener("mousemove",onMM);window.addEventListener("mouseup",onMU);return()=>{window.removeEventListener("mousemove",onMM);window.removeEventListener("mouseup",onMU);};},[onMM,onMU]);
 
-  const doExport=async()=>{setExporting(true);try{await exportSmallBanner({title,subtitle,subtitleMode,discountValue,discountLang,showSubtitle,productImages,bgColor,bgImage,bgMode,bannerStyle,titleColor,subtitleColor,textOffsetX,textOffsetY});}catch(ex){alert("Export failed: "+ex.message);}setExporting(false);};
+  const doExport=async()=>{setExporting(true);try{await exportSmallBanner({title,subtitle,subtitleMode,discountValue,discountLang,showSubtitle,productImages,bgColor,bgImage,bgMode,bannerStyle,titleColor,subtitleColor,textOffsetX,textOffsetY,exportScale});}catch(ex){alert("Export failed: "+ex.message);}setExporting(false);};
 
   const ImgCard=({pi,i})=>(
     <div style={{background:"#fafafa",border:"1px solid #f0f0f0",borderRadius:10,padding:"10px 12px",marginBottom:10}}>
@@ -478,7 +481,15 @@ function SmallBannerEditor({onBack}){
             )}
           </div>
           <div style={{padding:"12px 18px",borderTop:"1px solid #f0f0f0",background:"#fff",flexShrink:0}}>
-            <PrimaryBtn icon={exporting?"⏳":"⬇"} onClick={doExport} disabled={exporting}>{exporting?"Exporting…":"Export PNG — 361 × 90"}</PrimaryBtn>
+            {/* Export scale selector */}
+                <div style={{marginBottom:10}}>
+                  <div style={{fontSize:11,color:"#aaa",marginBottom:6}}>Export resolution</div>
+                  <div style={{display:"flex",gap:6}}>
+                    {[1,2,3,4].map(s=><button key={s} onClick={()=>setExportScale(s)} style={{flex:1,padding:"7px 0",border:"2px solid",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,borderColor:exportScale===s?"#D0021B":"#e0e0e0",background:exportScale===s?"#fff5f5":"#fff",color:exportScale===s?"#D0021B":"#777"}}>{s}×</button>)}
+                  </div>
+                  <div style={{fontSize:11,color:"#bbb",marginTop:5}}>{exportScale===1?"361 × 90 px":exportScale===2?"722 × 180 px":exportScale===3?"1083 × 270 px":"1444 × 360 px"}</div>
+                </div>
+            <PrimaryBtn icon={exporting?"⏳":"⬇"} onClick={doExport} disabled={exporting}>{exporting?"Exporting…":`Export PNG — ${exportScale}×`}</PrimaryBtn>
           </div>
         </div>
       </div>
@@ -494,7 +505,7 @@ function BigBannerEditor({onBack}){
   const [tab,setTab]=useState("content");
   const [title,setTitle]=useState("");const [titleColor,setTitleColor]=useState("#ffffff");
   const [subtitle,setSubtitle]=useState("");const [subtitleColor,setSubtitleColor]=useState("#ffffff");
-  const [showSubtitle,setShowSubtitle]=useState(false);const [textAlign,setTextAlign]=useState("left");const [textOffsetX,setTextOffsetX]=useState(0);const [textOffsetY,setTextOffsetY]=useState(0);
+  const [showSubtitle,setShowSubtitle]=useState(false);const [textAlign,setTextAlign]=useState("left");const [textOffsetX,setTextOffsetX]=useState(0);const [textOffsetY,setTextOffsetY]=useState(0);const [exportScale,setExportScale]=useState(2);
   const [logo,setLogo]=useState(null);const [logoScale,setLogoScale]=useState(1);const [logoX,setLogoX]=useState(14);const [logoY,setLogoY]=useState(14);
   const [heroImages,setHeroImages]=useState([]);
   const [bgColor,setBgColor]=useState("#1B2D6B");const [bgImage,setBgImage]=useState(null);const [bgMode,setBgMode]=useState("color");
@@ -527,7 +538,7 @@ function BigBannerEditor({onBack}){
   const onMU=useCallback(()=>{dragTarget.current=null;},[]);
   useEffect(()=>{window.addEventListener("mousemove",onMM);window.addEventListener("mouseup",onMU);return()=>{window.removeEventListener("mousemove",onMM);window.removeEventListener("mouseup",onMU);};},[onMM,onMU]);
 
-  const doExport=async()=>{setExporting(true);try{await exportBigBanner({title,titleColor,subtitle,subtitleColor,showSubtitle,logo,logoScale,logoX,logoY,heroImages,bgColor,bgImage,bgMode,textAlign,textOffsetX,textOffsetY});}catch(ex){alert("Export failed: "+ex.message);}setExporting(false);};
+  const doExport=async()=>{setExporting(true);try{await exportBigBanner({title,titleColor,subtitle,subtitleColor,showSubtitle,logo,logoScale,logoX,logoY,heroImages,bgColor,bgImage,bgMode,textAlign,textOffsetX,textOffsetY,exportScale});}catch(ex){alert("Export failed: "+ex.message);}setExporting(false);};
 
   const HeroCard=({h,i})=>(
     <div style={{background:"#fafafa",border:"1px solid #f0f0f0",borderRadius:10,padding:"10px 12px",marginBottom:10}}>
@@ -609,7 +620,15 @@ function BigBannerEditor({onBack}){
             )}
           </div>
           <div style={{padding:"12px 18px",borderTop:"1px solid #f0f0f0",background:"#fff",flexShrink:0}}>
-            <PrimaryBtn icon={exporting?"⏳":"⬇"} onClick={doExport} disabled={exporting}>{exporting?"Exporting…":"Export PNG — 360 × 250"}</PrimaryBtn>
+            {/* Export scale selector */}
+                <div style={{marginBottom:10}}>
+                  <div style={{fontSize:11,color:"#aaa",marginBottom:6}}>Export resolution</div>
+                  <div style={{display:"flex",gap:6}}>
+                    {[1,2,3,4].map(s=><button key={s} onClick={()=>setExportScale(s)} style={{flex:1,padding:"7px 0",border:"2px solid",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,borderColor:exportScale===s?"#D0021B":"#e0e0e0",background:exportScale===s?"#fff5f5":"#fff",color:exportScale===s?"#D0021B":"#777"}}>{s}×</button>)}
+                  </div>
+                  <div style={{fontSize:11,color:"#bbb",marginTop:5}}>{exportScale===1?"360 × 250 px":exportScale===2?"720 × 500 px":exportScale===3?"1080 × 750 px":"1440 × 1000 px"}</div>
+                </div>
+            <PrimaryBtn icon={exporting?"⏳":"⬇"} onClick={doExport} disabled={exporting}>{exporting?"Exporting…":`Export PNG — ${exportScale}×`}</PrimaryBtn>
           </div>
         </div>
       </div>
@@ -781,9 +800,10 @@ function CustomBannerEditor({onBack}){
     return()=>{window.removeEventListener("mousemove",onMM);window.removeEventListener("mouseup",onMU);};
   },[DSCALE]);
 
+  const [exportScale,setExportScale]=useState(1);
   const doExport=async()=>{
     setExporting(true);
-    try{await exportCustomBanner({canvasW,canvasH,bgMode,bgColor,bgColor2,bgImage,cornerRadius,elements});}
+    try{await exportCustomBanner({canvasW,canvasH,bgMode,bgColor,bgColor2,bgImage,cornerRadius,elements,exportScale});}
     catch(ex){alert("Export failed: "+ex.message);}
     setExporting(false);
   };
@@ -990,8 +1010,16 @@ function CustomBannerEditor({onBack}){
             ):<ElPanel/>}
           </div>
           <div style={{padding:"12px 14px",borderTop:"1px solid #f0f0f0",background:"#fff",flexShrink:0}}>
+            {/* Export scale selector */}
+              <div style={{marginBottom:10}}>
+                <div style={{fontSize:11,color:"#aaa",marginBottom:6}}>Export resolution</div>
+                <div style={{display:"flex",gap:6}}>
+                  {[1,2,3,4].map(s=><button key={s} onClick={()=>setExportScale(s)} style={{flex:1,padding:"7px 0",border:"2px solid",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,borderColor:exportScale===s?"#6366f1":"#e0e0e0",background:exportScale===s?"#f5f3ff":"#fff",color:exportScale===s?"#6366f1":"#777"}}>{s}×</button>)}
+                </div>
+                <div style={{fontSize:11,color:"#bbb",marginTop:5}}>{canvasW*exportScale} × {canvasH*exportScale} px</div>
+              </div>
             <PrimaryBtn icon={exporting?"⏳":"⬇"} onClick={doExport} disabled={exporting} color="#6366f1">
-              {exporting?"Exporting…":`Export PNG — ${canvasW} × ${canvasH}`}
+              {exporting?"Exporting…":`Export ${exportScale}× — ${canvasW*exportScale} × ${canvasH*exportScale} px`}
             </PrimaryBtn>
           </div>
         </div>

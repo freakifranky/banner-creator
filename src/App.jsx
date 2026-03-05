@@ -30,7 +30,7 @@ function TopBar({onBack,name,size}){return <div style={{height:52,background:"#f
 function StatusBar({label}){return <div style={{height:36,background:"#fff",borderTop:"1px solid #e8e8e8",display:"flex",alignItems:"center",justifyContent:"center",gap:8,flexShrink:0}}><div style={{width:8,height:8,borderRadius:"50%",background:"#22c55e"}}/><span style={{fontSize:12,color:"#888"}}>{label}</span></div>;}
 function SidebarTabBar({activeTab,setActiveTab}){return <div style={{display:"flex",borderBottom:"1px solid #e8e8e8",flexShrink:0}}>{[{id:"content",icon:"T"},{id:"visuals",icon:"🖼"}].map(t=><button key={t.id} onClick={()=>setActiveTab(t.id)} style={{flex:1,height:48,border:"none",cursor:"pointer",fontSize:t.id==="content"?18:15,background:"transparent",color:activeTab===t.id?"#D0021B":"#bbb",borderBottom:activeTab===t.id?"2px solid #D0021B":"2px solid transparent",transition:"all .15s"}}>{t.icon}</button>)}</div>;}
 function PrimaryBtn({children,onClick,icon,disabled,color}){const bg=color||(disabled?"#f0f0f0":"#D0021B");return <button onClick={onClick} disabled={disabled} style={{width:"100%",padding:"13px 0",background:bg,color:disabled?"#bbb":"#fff",border:"none",borderRadius:10,fontSize:14,fontWeight:600,cursor:disabled?"default":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,boxShadow:disabled?"none":`0 2px 8px ${bg}55`}}>{icon&&<span>{icon}</span>}{children}</button>;}
-function NumInput({label,value,onChange,min,max,step=1}){return <div style={{flex:1}}><div style={{fontSize:11,color:"#aaa",marginBottom:3}}>{label}</div><input type="number" value={value} min={min} max={max} step={step} onChange={e=>onChange(+e.target.value)} style={{width:"100%",padding:"7px 10px",border:"1px solid #e0e0e0",borderRadius:8,fontSize:12,outline:"none",boxSizing:"border-box"}}/></div>;}
+function NumInput({label,value,onChange,min,max,step=1}){return <div style={{flex:1}}><div style={{fontSize:11,color:"#aaa",marginBottom:3}}>{label}</div><input type="number" value={value} min={min} max={max} step={step} onChange={e=>onChange(+e.target.value)} style={{width:"100%",padding:"7px 10px",border:"1px solid #e0e0e0",borderRadius:8,fontSize:12,outline:"none",boxSizing:"border-box",background:"#fff",color:"#111"}}/></div>;}
 function SliderRow({label,value,onChange,min,max,step=0.01,display}){return <div style={{marginBottom:10}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:11,color:"#aaa"}}>{label}</span><span style={{fontSize:11,color:"#555",fontWeight:600}}>{display||value}</span></div><input type="range" min={min} max={max} step={step} value={value} onChange={e=>onChange(+e.target.value)} style={{width:"100%",accentColor:"#6366f1"}}/></div>;}
 
 const MAISON_NEUE_CSS = `
@@ -371,8 +371,18 @@ function SmallBannerEditor({onBack}){
   const dragTarget=useRef(null),dragStart=useRef({});
 
   const HEADROOM=bannerStyle==="floating"?60:0;
-  const addFiles=e=>{Array.from(e.target.files).forEach(f=>{const r=new FileReader();r.onload=ev=>{const img=new Image();img.onload=()=>setProductImages(p=>[...p,{src:ev.target.result,name:f.name,x:SBW*.72,y:SBH*.2,scale:.6,rotation:0,natW:img.naturalWidth,natH:img.naturalHeight}]);img.src=ev.target.result;};r.readAsDataURL(f);});e.target.value="";};
-  const addBg=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>setBgImage(ev.target.result);r.readAsDataURL(f);e.target.value="";};
+  const addFiles=e=>{Array.from(e.target.files).forEach(f=>{const r=new FileReader();r.onload=ev=>{const img=new Image();img.onload=()=>{
+    const MAX=800;const scale=Math.min(1,MAX/Math.max(img.naturalWidth,img.naturalHeight));
+    const nw=Math.round(img.naturalWidth*scale),nh=Math.round(img.naturalHeight*scale);
+    let src=ev.target.result;
+    if(scale<1){const c=document.createElement("canvas");c.width=nw;c.height=nh;c.getContext("2d").drawImage(img,0,0,nw,nh);src=c.toDataURL("image/png");}
+    setProductImages(p=>[...p,{src,name:f.name,x:SBW*.72,y:SBH*.2,scale:.6,rotation:0,natW:nw,natH:nh}]);
+  };img.src=ev.target.result;};r.readAsDataURL(f);});e.target.value="";};
+  const addBg=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{const img=new Image();img.onload=()=>{
+    const MAX=1440;const scale=Math.min(1,MAX/Math.max(img.naturalWidth,img.naturalHeight));
+    if(scale<1){const c=document.createElement("canvas");c.width=Math.round(img.naturalWidth*scale);c.height=Math.round(img.naturalHeight*scale);c.getContext("2d").drawImage(img,0,0,c.width,c.height);setBgImage(c.toDataURL("image/jpeg",.9));}
+    else setBgImage(ev.target.result);
+  };img.src=ev.target.result;};r.readAsDataURL(f);e.target.value="";};
   const addUrl=()=>{if(!urlInput.trim())return;const img=new Image();img.crossOrigin="anonymous";img.onload=()=>setProductImages(p=>[...p,{src:urlInput.trim(),name:"URL image",x:SBW*.72,y:SBH*.2,scale:.6,rotation:0,natW:img.naturalWidth,natH:img.naturalHeight}]);img.src=urlInput.trim();setUrlInput("");};
   const updateProd=(i,patch)=>setProductImages(p=>p.map((h,j)=>j===i?{...h,...patch}:h));
   const removeProd=i=>setProductImages(p=>p.filter((_,j)=>j!==i));
@@ -421,8 +431,8 @@ function SmallBannerEditor({onBack}){
                   {[{v:"left",l:"← Left"},{v:"center",l:"Center"},{v:"right",l:"Right →"}].map(a=><button key={a.v} onClick={()=>setTextAlign(a.v)} style={{flex:1,padding:"7px 0",border:"2px solid",borderRadius:8,cursor:"pointer",fontSize:11,fontWeight:600,borderColor:textAlign===a.v?"#D0021B":"#e0e0e0",background:textAlign===a.v?"#fff5f5":"#fff",color:textAlign===a.v?"#D0021B":"#777"}}>{a.l}</button>)}
                 </div>
                 <div style={{display:"flex",gap:8,marginBottom:12}}>
-                  <div style={{flex:1}}><div style={{fontSize:11,color:"#aaa",marginBottom:3}}>Offset X</div><input type="number" value={textOffsetX} onChange={e=>setTextOffsetX(+e.target.value)} style={{width:"100%",padding:"7px 10px",border:"1px solid #e0e0e0",borderRadius:8,fontSize:12,outline:"none",boxSizing:"border-box"}}/></div>
-                  <div style={{flex:1}}><div style={{fontSize:11,color:"#aaa",marginBottom:3}}>Offset Y</div><input type="number" value={textOffsetY} onChange={e=>setTextOffsetY(+e.target.value)} style={{width:"100%",padding:"7px 10px",border:"1px solid #e0e0e0",borderRadius:8,fontSize:12,outline:"none",boxSizing:"border-box"}}/></div>
+                  <div style={{flex:1}}><div style={{fontSize:11,color:"#aaa",marginBottom:3}}>Offset X</div><input type="number" value={textOffsetX} onChange={e=>setTextOffsetX(+e.target.value)} style={{width:"100%",padding:"7px 10px",border:"1px solid #e0e0e0",borderRadius:8,fontSize:12,outline:"none",boxSizing:"border-box",background:"#fff",color:"#111"}}/></div>
+                  <div style={{flex:1}}><div style={{fontSize:11,color:"#aaa",marginBottom:3}}>Offset Y</div><input type="number" value={textOffsetY} onChange={e=>setTextOffsetY(+e.target.value)} style={{width:"100%",padding:"7px 10px",border:"1px solid #e0e0e0",borderRadius:8,fontSize:12,outline:"none",boxSizing:"border-box",background:"#fff",color:"#111"}}/></div>
                 </div>
                 <Divider/>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:showSubtitle?12:0}}>
@@ -432,7 +442,7 @@ function SmallBannerEditor({onBack}){
                   <div style={{display:"flex",background:"#f5f5f5",borderRadius:8,padding:3,gap:2,marginBottom:10}}>
                     {[{v:"text",l:"Free text"},{v:"discount",l:"Discount"}].map(o=><button key={o.v} onClick={()=>setSubtitleMode(o.v)} style={{flex:1,padding:"7px 0",border:"none",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:500,background:subtitleMode===o.v?"#fff":"transparent",color:subtitleMode===o.v?"#111":"#999",boxShadow:subtitleMode===o.v?"0 1px 3px rgba(0,0,0,.1)":"none"}}>{o.l}</button>)}
                   </div>
-                  {subtitleMode==="text"?<input value={subtitle} onChange={e=>setSubtitle(e.target.value)} placeholder="Subtitle text" style={{width:"100%",padding:"9px 12px",border:"1px solid #e0e0e0",borderRadius:10,fontSize:13,outline:"none",boxSizing:"border-box",color:"#111",marginBottom:8}}/>:<div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}><input value={discountValue} onChange={e=>setDiscountValue(e.target.value)} placeholder="25" style={{width:60,padding:"9px 10px",border:"1px solid #e0e0e0",borderRadius:10,fontSize:13,outline:"none",textAlign:"center"}}/><span style={{color:"#aaa",fontSize:14}}>%</span><select value={discountLang} onChange={e=>setDiscountLang(e.target.value)} style={{padding:"9px 8px",border:"1px solid #e0e0e0",borderRadius:10,fontSize:12,outline:"none",background:"#fff"}}><option value="id">ID</option><option value="en">EN</option></select></div>}
+                  {subtitleMode==="text"?<input value={subtitle} onChange={e=>setSubtitle(e.target.value)} placeholder="Subtitle text" style={{width:"100%",padding:"9px 12px",border:"1px solid #e0e0e0",borderRadius:10,fontSize:13,outline:"none",boxSizing:"border-box",color:"#111",background:"#fff",marginBottom:8}}/>:<div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}><input value={discountValue} onChange={e=>setDiscountValue(e.target.value)} placeholder="25" style={{width:60,padding:"9px 10px",border:"1px solid #e0e0e0",borderRadius:10,fontSize:13,outline:"none",textAlign:"center",background:"#fff",color:"#111"}}/><span style={{color:"#aaa",fontSize:14}}>%</span><select value={discountLang} onChange={e=>setDiscountLang(e.target.value)} style={{padding:"9px 8px",border:"1px solid #e0e0e0",borderRadius:10,fontSize:12,outline:"none",background:"#fff"}}><option value="id">ID</option><option value="en">EN</option></select></div>}
                   <FontColorRow color={subtitleColor} onChange={setSubtitleColor} label="Subtitle font color"/>
                 </>}
               </>
@@ -453,7 +463,7 @@ function SmallBannerEditor({onBack}){
                 </div>
                 <div style={{fontSize:12,color:"#aaa",marginBottom:5}}>Or paste image URL</div>
                 <div style={{display:"flex",gap:6,marginBottom:12}}>
-                  <input value={urlInput} onChange={e=>setUrlInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addUrl()} placeholder="https://..." style={{flex:1,padding:"8px 10px",border:"1px solid #e0e0e0",borderRadius:8,fontSize:12,outline:"none"}}/>
+                  <input value={urlInput} onChange={e=>setUrlInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addUrl()} placeholder="https://..." style={{flex:1,padding:"8px 10px",border:"1px solid #e0e0e0",borderRadius:8,fontSize:12,outline:"none",background:"#fff",color:"#111"}}/>
                   <button onClick={addUrl} style={{padding:"8px 14px",background:"#D0021B",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600}}>Add</button>
                 </div>
                 {productImages.map((pi,i)=><ImgCard key={i} pi={pi} i={i}/>)}
@@ -493,7 +503,13 @@ function BigBannerEditor({onBack}){
   const dragTarget=useRef(null),dragStart=useRef({});
 
   const loadFile=(ref,cb)=>{ref.current.click();ref.current.onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>cb(ev.target.result,f.name);r.readAsDataURL(f);e.target.value="";};};
-  const addHero=()=>loadFile(heroRef,(src,name)=>setHeroImages(p=>[...p,{src,name:name||"Hero image",x:100,y:20,scale:1,rotation:0}]));
+  const addHero=()=>loadFile(heroRef,(src,name)=>{const img=new Image();img.onload=()=>{
+    const MAX=800;const scale=Math.min(1,MAX/Math.max(img.naturalWidth,img.naturalHeight));
+    const nw=Math.round(img.naturalWidth*scale),nh=Math.round(img.naturalHeight*scale);
+    let rsrc=src;
+    if(scale<1){const c=document.createElement("canvas");c.width=nw;c.height=nh;c.getContext("2d").drawImage(img,0,0,nw,nh);rsrc=c.toDataURL("image/png");}
+    setHeroImages(p=>[...p,{src:rsrc,name:name||"Hero image",x:100,y:20,scale:1,rotation:0,natW:nw,natH:nh}]);
+  };img.src=src;});
   const updateHero=(i,patch)=>setHeroImages(p=>p.map((h,j)=>j===i?{...h,...patch}:h));
   const removeHero=i=>setHeroImages(p=>p.filter((_,j)=>j!==i));
 
@@ -548,15 +564,15 @@ function BigBannerEditor({onBack}){
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:showSubtitle?12:0}}>
                   <SLabel sub="MaisonNeuExt Demi · 12px">Subtitle</SLabel><Toggle checked={showSubtitle} onChange={setShowSubtitle}/>
                 </div>
-                {showSubtitle&&<><input value={subtitle} onChange={e=>setSubtitle(e.target.value)} placeholder="Detail text" style={{width:"100%",padding:"9px 12px",border:"1px solid #e0e0e0",borderRadius:10,fontSize:13,outline:"none",boxSizing:"border-box",color:"#111",marginBottom:8}}/><FontColorRow color={subtitleColor} onChange={setSubtitleColor} label="Subtitle font color"/></>}
+                {showSubtitle&&<><input value={subtitle} onChange={e=>setSubtitle(e.target.value)} placeholder="Detail text" style={{width:"100%",padding:"9px 12px",border:"1px solid #e0e0e0",borderRadius:10,fontSize:13,outline:"none",boxSizing:"border-box",color:"#111",background:"#fff",marginBottom:8}}/><FontColorRow color={subtitleColor} onChange={setSubtitleColor} label="Subtitle font color"/></>}
                 <Divider/>
                 <SLabel>Text alignment</SLabel>
                 <div style={{display:"flex",gap:6,marginTop:8}}>
                   {[{v:"left",l:"← Left"},{v:"center",l:"Center"},{v:"right",l:"Right →"}].map(a=><button key={a.v} onClick={()=>setTextAlign(a.v)} style={{flex:1,padding:"8px 0",border:"2px solid",borderRadius:8,cursor:"pointer",fontSize:11,fontWeight:600,borderColor:textAlign===a.v?"#D0021B":"#e0e0e0",background:textAlign===a.v?"#fff5f5":"#fff",color:textAlign===a.v?"#D0021B":"#777"}}>{a.l}</button>)}
                 </div>
                 <div style={{display:"flex",gap:8,marginTop:10}}>
-                  <div style={{flex:1}}><div style={{fontSize:11,color:"#aaa",marginBottom:3}}>Offset X</div><input type="number" value={textOffsetX} onChange={e=>setTextOffsetX(+e.target.value)} style={{width:"100%",padding:"7px 10px",border:"1px solid #e0e0e0",borderRadius:8,fontSize:12,outline:"none",boxSizing:"border-box"}}/></div>
-                  <div style={{flex:1}}><div style={{fontSize:11,color:"#aaa",marginBottom:3}}>Offset Y</div><input type="number" value={textOffsetY} onChange={e=>setTextOffsetY(+e.target.value)} style={{width:"100%",padding:"7px 10px",border:"1px solid #e0e0e0",borderRadius:8,fontSize:12,outline:"none",boxSizing:"border-box"}}/></div>
+                  <div style={{flex:1}}><div style={{fontSize:11,color:"#aaa",marginBottom:3}}>Offset X</div><input type="number" value={textOffsetX} onChange={e=>setTextOffsetX(+e.target.value)} style={{width:"100%",padding:"7px 10px",border:"1px solid #e0e0e0",borderRadius:8,fontSize:12,outline:"none",boxSizing:"border-box",background:"#fff",color:"#111"}}/></div>
+                  <div style={{flex:1}}><div style={{fontSize:11,color:"#aaa",marginBottom:3}}>Offset Y</div><input type="number" value={textOffsetY} onChange={e=>setTextOffsetY(+e.target.value)} style={{width:"100%",padding:"7px 10px",border:"1px solid #e0e0e0",borderRadius:8,fontSize:12,outline:"none",boxSizing:"border-box",background:"#fff",color:"#111"}}/></div>
                 </div>
               </>
             ):(
@@ -804,7 +820,7 @@ function CustomBannerEditor({onBack}){
           <Divider/>
           <SLabel>Text Content</SLabel>
           <textarea value={selected.text} onChange={e=>updateEl(selected.id,{text:e.target.value})} rows={3}
-            style={{width:"100%",padding:"9px 12px",border:"1px solid #e0e0e0",borderRadius:10,fontSize:13,resize:"vertical",fontFamily:"inherit",outline:"none",boxSizing:"border-box",color:"#111",marginTop:6,marginBottom:10}}/>
+            style={{width:"100%",padding:"9px 12px",border:"1px solid #e0e0e0",borderRadius:10,fontSize:13,resize:"vertical",fontFamily:"inherit",outline:"none",boxSizing:"border-box",color:"#111",background:"#fff",marginTop:6,marginBottom:10}}/>
           <SLabel>Typography</SLabel>
           <div style={{display:"flex",gap:8,marginTop:6,marginBottom:8}}>
             <NumInput label="Font size" value={selected.fontSize||24} onChange={v=>updateEl(selected.id,{fontSize:v})} min={6} max={300}/>

@@ -204,30 +204,47 @@ async function exportCustomBanner({canvasW,canvasH,bgMode,bgColor,bgColor2,bgIma
   else{ctx.fillStyle=bgColor||"#ffffff";ctx.fillRect(0,0,W,H);}
   ctx.restore();
   for(const el of elements){
-    ctx.save();ctx.translate(el.x,el.y);ctx.rotate((el.rotation||0)*Math.PI/180);ctx.globalAlpha=el.opacity??1;
-    if(el.type==="image"){try{const img=await loadImg(el.src);const iw=el.natW*el.scale,ih=el.natH*el.scale;ctx.drawImage(img,-iw/2,-ih/2,iw,ih);}catch{}}
-    else if(el.type==="text"){
+    ctx.save();
+    ctx.translate(el.x,el.y);
+    ctx.rotate((el.rotation||0)*Math.PI/180);
+    ctx.globalAlpha=el.opacity??1;
+
+    if(el.type==="image"){
+      try{
+        const img=await loadImg(el.src);
+        const iw=el.natW*el.scale,ih=el.natH*el.scale;
+        ctx.drawImage(img,-iw/2,-ih/2,iw,ih); // centered on el.x/el.y, matching preview
+      }catch{}
+    } else if(el.type==="text"){
       const fs=el.fontSize||24;
+      const lh=fs*1.2;
       const tw=el.textW||300;
+      const align=el.align||"left";
       ctx.font=`${el.fontWeight||700} ${fs}px ${(el.fontFamily||"'MaisonNeue',sans-serif").replace(/'/g,'"')}`;
       ctx.fillStyle=el.color||"#111";
-      ctx.textAlign=el.align||"left";
+      ctx.textAlign=align;
       ctx.textBaseline="top";
-      const xOff=el.align==="center"?tw/2:el.align==="right"?tw:0;
-      // Word-wrap each line to fit within textW
-      let row=0;
-      (el.text||"Text").split("\n").forEach(line=>{
-        const words=line.split(" ");
-        let cur="";
+
+      // Word-wrap into lines (matches preview whiteSpace:pre-wrap wordBreak:break-word)
+      const wrappedLines=[];
+      (el.text||"Text").split("\n").forEach(paragraph=>{
+        const words=paragraph.split(" ");let cur="";
         words.forEach(w=>{
           const test=cur?cur+" "+w:w;
-          if(ctx.measureText(test).width>tw&&cur){
-            ctx.fillText(cur,xOff,row*fs*1.2);row++;cur=w;
-          } else cur=test;
+          if(ctx.measureText(test).width>tw&&cur){wrappedLines.push(cur);cur=w;}
+          else cur=test;
         });
-        ctx.fillText(cur,xOff,row*fs*1.2);row++;
+        wrappedLines.push(cur);
       });
+
+      // Center the entire text block vertically around el.y (matching preview translate(-50%,-50%))
+      const totalTextH=wrappedLines.length*lh;
+      const yStart=-totalTextH/2;
+      // x: textAlign handles left/center/right, so xOff shifts the anchor to match half-width centering
+      const xOff=align==="center"?0:align==="right"?tw/2:-tw/2;
+      wrappedLines.forEach((line,i)=>ctx.fillText(line,xOff,yStart+i*lh));
     }
+
     ctx.globalAlpha=1;ctx.restore();
   }
   const blob=await new Promise(r=>canvas.toBlob(r,"image/png"));const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=`custom-banner-${W}x${H}.png`;a.click();URL.revokeObjectURL(url);
